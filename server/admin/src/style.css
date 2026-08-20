@@ -295,9 +295,15 @@ h1 { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsi
 .cm-scroller { overflow: auto; padding: 9px 0 35vh; }
 .cm-content { padding: 0 12px; caret-color: var(--accent); }
 .cm-line { padding: 0 4px; }
-.cm-gutters { border: 0; border-right: 1px solid var(--border); background: var(--panel-subtle); color: var(--muted); }
+.json-editor .cm-editor .cm-gutters {
+  border: 0;
+  border-right: 1px solid var(--border);
+  background-color: var(--panel-subtle);
+  color: var(--muted);
+}
 .cm-lineNumbers .cm-gutterElement { min-width: 40px; padding: 0 9px 0 5px; }
-.cm-activeLine, .cm-activeLineGutter { background: var(--accent-soft); }
+.json-editor .cm-editor .cm-activeLine,
+.json-editor .cm-editor .cm-activeLineGutter { background-color: var(--accent-soft); }
 .cm-selectionBackground, .cm-editor ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
 .empty-editor { grid-row: 1 / -1; gap: 7px; padding: 20px; }
 .empty-editor h2 { color: var(--foreground); font-size: 14px; font-weight: 600; }
