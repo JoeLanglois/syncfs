@@ -4,6 +4,12 @@ A small unauthenticated sync server intended for a trusted Tailscale network. It
 stores key/value pairs, SHA-256 value ETags, idempotency records, and an SSE replay
 log in SQLite.
 
+## Admin panel
+
+The Mithril + Vite console in `admin/` searches keys by synchronized prefix, edits
+JSON values, and updates automatically from SSE invalidations. Run `npm install` at
+the repository root and in `server/admin`, then use `npm run admin:dev` from the root.
+
 ## Run
 
 ```sh
