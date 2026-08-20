@@ -107,6 +107,7 @@ const App: m.Component = {
                     model.editorValue = value
                     m.redraw()
                   },
+                  onSave: () => void model.save(),
                 }),
               ]
             : m('.empty-editor', [
@@ -154,6 +155,7 @@ const App: m.Component = {
               model.createError = ''
               m.redraw()
             },
+            onSave: () => void model.create(),
           })),
           model.createError ? m('p.dialog-error', model.createError) : null,
         ]),

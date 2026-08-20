@@ -1,13 +1,16 @@
 import m from 'mithril'
+import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { json } from '@codemirror/lang-json'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
 import { tags } from '@lezer/highlight'
-import { drawSelection, EditorView, highlightActiveLine, lineNumbers } from '@codemirror/view'
+import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 
 type EditorAttrs = {
   value: string
   onChange(value: string): void
+  onSave?(): void
 }
 
 const jsonHighlight = HighlightStyle.define([
@@ -29,8 +32,27 @@ export const JsonEditor: m.Component<EditorAttrs> = {
           lineNumbers(),
           drawSelection(),
           highlightActiveLine(),
+          history(),
           json(),
+          indentUnit.of('  '),
+          indentOnInput(),
+          bracketMatching(),
+          closeBrackets(),
           syntaxHighlighting(jsonHighlight),
+          keymap.of([
+            {
+              key: 'Mod-s',
+              preventDefault: true,
+              run: () => {
+                attrs.onSave?.()
+                return true
+              },
+            },
+            ...closeBracketsKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+            indentWithTab,
+          ]),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({
             'aria-label': 'JSON value editor',
