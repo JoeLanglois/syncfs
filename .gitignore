@@ -1,0 +1,18 @@
+# Installed dependencies and generated build/test output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Local server state; SQLite WAL files must never be committed
+server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Developer-specific environment and operating-system files
+.env
+.env.local
+.env.*.local
+.DS_Store

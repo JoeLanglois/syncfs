@@ -1,0 +1,59 @@
+# Local-First Key-Value Store — API & Sync Strategy
+
+Build a simple local-first key-value library with a Deno sync server and TypeScript
+browser/Electron client.
+
+## Core model
+
+Clients explicitly synchronize string prefixes they need offline:
+
+```ts
+kv.sync("notes/")
+kv.sync("finances/2026/")
+```
+
+Only matching keys are replicated to IndexedDB. Everything else remains remote-only
+and can be read explicitly with `kv.fetch(key)`.
+
+## Client API
+
+```ts
+kv.sync(prefix)
+kv.unsync(prefix)
+kv.get(key)
+kv.set(key, value)
+kv.delete(key)
+kv.transaction(tx => {
+  tx.set(key, value)
+  tx.delete(key)
+})
+kv.keys(prefix)
+kv.fetch(key)
+kv.watch(prefix, callback)
+```
+
+Covered operations are local-first, atomic, immediately observable, and never wait
+for the server. Sync runs independently in the background.
+
+## Synchronization
+
+The server stores `key`, JSON `value`, and an ETag equal to the SHA-256 hash of the
+serialized value. A prefix listing returns all matching keys and ETags. The client
+compares those with IndexedDB, bulk-downloads changed values, and removes local keys
+missing remotely.
+
+Writes use `If-Match`; creates use `If-None-Match: *`. Multi-key transactions commit
+atomically in IndexedDB, queue as one unit, and apply in one SQLite transaction.
+Persistent idempotency keys make retries safe. Conflicts must never silently
+overwrite remote changes.
+
+## Live sync
+
+SSE is only a prefix-scoped invalidation signal. It is batched, excludes the writing
+client, and is not required for correctness. Startup and periodic fallback perform
+normal ETag-based synchronization.
+
+## Principle
+
+> A client explicitly chooses which key prefixes form its offline replica. Covered
+> keys behave like a local key-value store and synchronize automatically.

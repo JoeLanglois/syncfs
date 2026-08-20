@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import { createApp, type App } from "./app.ts";
+
+function valueRequest(app: App, method: string, key: string, options: { value?: unknown; match?: string; none?: boolean; id?: string } = {}) {
+  const headers = new Headers();
+  if (options.value !== undefined) headers.set("content-type", "application/json");
+  if (options.match) headers.set("if-match", options.match);
+  if (options.none) headers.set("if-none-match", "*");
+  if (options.id) headers.set("idempotency-key", options.id);
+  return app.fetch(new Request(`http://test/v1/values?key=${encodeURIComponent(key)}`, {
+    method, headers, ...(options.value === undefined ? {} : { body: JSON.stringify({ value: options.value }) }),
+  }));
+}
+
+Deno.test("values use content hashes and optimistic conditions", async () => {
+  const app = createApp(":memory:");
+  try {
+    assert.equal((await valueRequest(app, "PUT", "todo/a", { value: 1, id: "m0" })).status, 428);
+    const created = await valueRequest(app, "PUT", "todo/a", { value: { n: 1 }, none: true, id: "m1" });
+    const first = await created.json() as { etag: string };
+    assert.equal(first.etag.length, 64);
+    const retry = await valueRequest(app, "PUT", "todo/a", { value: { n: 1 }, none: true, id: "m1" });
+    assert.deepEqual(await retry.json(), first);
+    assert.equal((await valueRequest(app, "PUT", "todo/a", { value: 2, match: "stale", id: "m2" })).status, 412);
+    const read = await valueRequest(app, "GET", "todo/a");
+    assert.deepEqual((await read.json()).value, { n: 1 });
+    assert.equal(read.headers.get("etag"), `"${first.etag}"`);
+  } finally { app.close(); }
+});
+
+Deno.test("prefix listings support ETags, bulk reads, and deletes", async () => {
+  const app = createApp(":memory:");
+  try {
+    await valueRequest(app, "PUT", "todo/a", { value: 1, none: true, id: "a" });
+    await valueRequest(app, "PUT", "todo/b", { value: 2, none: true, id: "b" });
+    await valueRequest(app, "PUT", "other/c", { value: 3, none: true, id: "c" });
+    const listing = await app.fetch(new Request("http://test/v1/keys?prefix=todo%2F"));
+    const etag = listing.headers.get("etag")!;
+    assert.deepEqual((await listing.json()).entries.map((entry: { key: string }) => entry.key), ["todo/a", "todo/b"]);
+    const unchanged = await app.fetch(new Request("http://test/v1/keys?prefix=todo%2F", { headers: { "if-none-match": etag } }));
+    assert.equal(unchanged.status, 304);
+    const bulk = await app.fetch(new Request("http://test/v1/values/read", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ keys: ["todo/a", "todo/b"] }),
+    }));
+    assert.deepEqual((await bulk.json()).map((item: { value: unknown }) => item.value), [1, 2]);
+    const current = await valueRequest(app, "GET", "todo/a");
+    const currentEtag = (await current.json()).etag;
+    assert.equal((await valueRequest(app, "DELETE", "todo/a", { match: currentEtag, id: "delete" })).status, 200);
+  } finally { app.close(); }
+});
+
+Deno.test("transactions are all-or-nothing and idempotent", async () => {
+  const app = createApp(":memory:");
+  try {
+    const a = await (await valueRequest(app, "PUT", "account/a", { value: 10, none: true, id: "a" })).json();
+    const b = await (await valueRequest(app, "PUT", "account/b", { value: 20, none: true, id: "b" })).json();
+    const send = (id: string, operations: unknown[]) => app.fetch(new Request("http://test/v1/transactions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": id },
+      body: JSON.stringify({ operations }),
+    }));
+
+    const conflict = await send("tx-conflict", [
+      { type: "set", key: "account/a", value: 9, baseEtag: a.etag },
+      { type: "set", key: "account/b", value: 21, baseEtag: "stale" },
+    ]);
+    assert.equal(conflict.status, 412);
+    assert.equal((await (await valueRequest(app, "GET", "account/a")).json()).value, 10);
+    assert.equal((await (await valueRequest(app, "GET", "account/b")).json()).value, 20);
+
+    const committed = await send("tx-success", [
+      { type: "set", key: "account/a", value: 9, baseEtag: a.etag },
+      { type: "set", key: "account/b", value: 21, baseEtag: b.etag },
+    ]);
+    assert.equal(committed.status, 200);
+    const result = await committed.json();
+    assert.equal(Object.keys(result.etags).length, 2);
+    assert.deepEqual(await (await send("tx-success", [
+      { type: "set", key: "account/a", value: 9, baseEtag: a.etag },
+      { type: "set", key: "account/b", value: 21, baseEtag: b.etag },
+    ])).json(), result);
+  } finally { app.close(); }
+});
+
+Deno.test("SQLite values survive reopening", async () => {
+  const directory = await Deno.makeTempDir();
+  const filename = `${directory}/kv.sqlite`;
+  try {
+    const first = createApp(filename);
+    await valueRequest(first, "PUT", "persistent", { value: true, none: true, id: "p" });
+    first.close();
+    const second = createApp(filename);
+    assert.deepEqual((await (await valueRequest(second, "GET", "persistent")).json()).value, true);
+    second.close();
+  } finally { await Deno.remove(directory, { recursive: true }); }
+});

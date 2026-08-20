@@ -1,0 +1,67 @@
+:root {
+  color: #4d4d4d;
+  background: #f5f5f5;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input { font: inherit; }
+button { color: inherit; }
+
+.app-shell { display: grid; grid-template-columns: 250px minmax(0, 620px); justify-content: center; gap: 36px; padding: 60px 24px; }
+.sidebar { min-width: 0; }
+.brand { margin: 0 0 8px; color: #b83f45; font-size: 24px; font-weight: 500; }
+.logo { display: inline-grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: white; background: #b83f45; }
+.local-badge { margin: 0 0 34px; color: #628264; font-size: 12px; }
+.sidebar h2 { color: #777; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+.list-nav { display: grid; gap: 4px; }
+.list-button { overflow: hidden; width: 100%; padding: 10px 12px; border: 0; border-radius: 6px; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.list-button:hover, .list-button.selected { background: #fff; box-shadow: 0 1px 4px #00000012; }
+.list-button.selected { color: #b83f45; font-weight: 600; }
+.new-list { display: flex; margin-top: 14px; }
+.new-list input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px 0 0 5px; background: #ffffff99; }
+.new-list button { width: 36px; border: 0; border-radius: 0 5px 5px 0; color: white; background: #b83f45; cursor: pointer; }
+
+.todoapp { position: relative; background: #fff; box-shadow: 0 2px 4px #0003, 0 25px 50px #0000001a; }
+.header { position: relative; }
+.list-title { width: calc(100% - 120px); margin: 18px 100px 12px 20px; padding: 4px; border: 1px solid transparent; color: #b83f45; background: transparent; font-size: 34px; font-weight: 200; }
+.list-title:focus { border-color: #e6b8ba; outline: none; }
+.delete-list { position: absolute; top: 28px; right: 18px; border: 0; color: #999; background: none; font-size: 12px; cursor: pointer; }
+.new-todo, .edit { width: 100%; padding: 16px 16px 16px 60px; border: 0; border-top: 1px solid #eee; outline: none; color: inherit; font-size: 24px; font-weight: 300; box-shadow: inset 0 -2px 1px #00000008; }
+.new-todo::placeholder { color: #ddd; font-style: italic; }
+.main { position: relative; border-top: 1px solid #e6e6e6; }
+.toggle-all { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.toggle-all + label { position: absolute; z-index: 1; top: -51px; left: 20px; transform: rotate(90deg); color: #e6e6e6; font-size: 22px; cursor: pointer; }
+.toggle-all:checked + label { color: #737373; }
+.todo-list { margin: 0; padding: 0; list-style: none; }
+.todo-list li { position: relative; border-bottom: 1px solid #ededed; font-size: 24px; }
+.todo-list li .view { display: flex; align-items: center; min-height: 58px; }
+.todo-list .toggle { width: 40px; height: 40px; margin: 9px 10px; accent-color: #5b9b89; cursor: pointer; }
+.todo-list label { flex: 1; padding: 15px 15px 15px 4px; line-height: 1.2; overflow-wrap: anywhere; transition: color .3s; }
+.todo-list li.completed label { color: #d9d9d9; text-decoration: line-through; }
+.destroy { display: none; width: 40px; margin-right: 10px; border: 0; color: #cc9a9a; background: none; font-size: 30px; cursor: pointer; }
+.todo-list li:hover .destroy { display: block; }
+.todo-list li.editing .view { display: none; }
+.todo-list .edit { padding-left: 14px; border: 1px solid #999; box-shadow: inset 0 -1px 5px #0003; }
+.footer { display: flex; align-items: center; min-height: 50px; padding: 10px 15px; color: #777; font-size: 13px; }
+.todo-count { width: 110px; }
+.filters { display: flex; flex: 1; justify-content: center; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.filters button, .clear-completed { border: 1px solid transparent; border-radius: 3px; background: none; cursor: pointer; }
+.filters button.selected { border-color: #ce464a55; }
+.clear-completed { width: 120px; }
+.clear-completed:hover { text-decoration: underline; }
+.error { padding: 12px 16px; color: #842029; background: #f8d7da; }
+.error button { float: right; border: 0; background: none; cursor: pointer; }
+.loading, .empty { margin: 80px auto; padding: 30px; color: #888; text-align: center; }
+
+@media (max-width: 760px) {
+  .app-shell { grid-template-columns: minmax(0, 620px); padding: 24px 12px; }
+  .sidebar { padding: 0 8px; }
+  .local-badge { margin-bottom: 20px; }
+  .list-nav { display: flex; overflow-x: auto; }
+  .list-button { width: auto; flex: 0 0 auto; }
+  .footer { flex-wrap: wrap; gap: 8px; }
+  .filters { order: 3; flex-basis: 100%; }
+}
