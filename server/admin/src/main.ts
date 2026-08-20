@@ -83,6 +83,7 @@ const App: m.Component = {
               ? m('.empty-list', [m('span', '⌁'), m('p', 'No matching keys')])
               : model.keys.map((key) => m('button.key-row', {
                   class: key === model.selectedKey ? 'selected' : '',
+                  key,
                   onclick: () => void model.selectKey(key),
                   title: key,
                 }, [m('span.key-glyph', '{}'), m('span.key-name', key)]))),
@@ -101,7 +102,6 @@ const App: m.Component = {
                   ]),
                 ]),
                 m(JsonEditor, {
-                  key: `${model.selectedKey}:${model.theme}`,
                   value: model.editorValue,
                   onChange: (value) => {
                     model.editorValue = value
