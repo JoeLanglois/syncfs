@@ -6,10 +6,6 @@ import { AdminModel } from './model.js'
 const model = new AdminModel()
 
 const App: m.Component = {
-  oninit() {
-    void model.start()
-  },
-
   oncreate() {
     window.addEventListener('keydown', saveShortcut)
     window.addEventListener('pagehide', close, { once: true })
@@ -18,7 +14,6 @@ const App: m.Component = {
   onremove() {
     window.removeEventListener('keydown', saveShortcut)
     window.removeEventListener('pagehide', close)
-    void model.close()
   },
 
   view() {
@@ -192,4 +187,30 @@ function close(): void {
 
 const root = document.querySelector<HTMLElement>('#app')
 if (!root) throw new Error('Missing #app mount point')
-m.mount(root, App)
+
+function route(mode: 'all' | 'prefix' | 'key'): m.RouteResolver<Record<string, string | undefined>> {
+  return {
+    async onmatch(params) {
+      await model.start()
+      if (mode === 'prefix') await model.openPrefix(String(params.prefix ?? ''), false)
+      if (mode === 'key') {
+        const key = String(params.key ?? '')
+        // Showing the key itself as the search keeps the surrounding list focused
+        // while preserving a stable URL for browser refresh and sharing.
+        await model.openPrefix(key, false)
+        await model.selectKey(key, false)
+      }
+      if (mode === 'all') await model.openPrefix('', false)
+      return App
+    },
+  }
+}
+
+// Clean history URLs are rooted below the server's /admin mount. The server falls
+// back to index.html for these paths, allowing direct links and page refreshes.
+m.route.prefix = '/admin'
+m.route(root, '/', {
+  '/': route('all'),
+  '/prefix/:prefix...': route('prefix'),
+  '/key/:key...': route('key'),
+})

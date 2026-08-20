@@ -21,6 +21,7 @@ override either default.
 ## Features
 
 - Live prefix and case-insensitive full-text key search with synchronized results
+- Mithril history routes for shareable prefix searches and selected keys
 - Creating and deleting keys within the active prefix
 - JSON editing, syntax highlighting, auto-closing brackets, and smart indentation powered by CodeMirror 6
 - Optimistic conflict-safe saves through `@synckv/client`

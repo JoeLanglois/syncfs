@@ -172,7 +172,14 @@ async function adminAsset(pathname: string, head: boolean, root: URL): Promise<R
     });
     return new Response(head ? null : body, { headers });
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) throw new HttpError(404, "Admin asset not found");
+    if (error instanceof Deno.errors.NotFound) {
+      // Mithril uses history routing below /admin. Non-asset paths need the Vite
+      // entry point so direct links and browser refreshes can bootstrap the router.
+      if (relative !== "index.html" && !relative.startsWith("assets/")) {
+        return adminAsset("/admin/", head, normalizedRoot);
+      }
+      throw new HttpError(404, "Admin asset not found");
+    }
     throw error;
   }
 }

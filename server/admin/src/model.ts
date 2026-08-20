@@ -27,6 +27,7 @@ export class AdminModel {
 
   private stopWatching: (() => void) | undefined
   private generation = 0
+  private startPromise: Promise<void> | undefined
 
   constructor() {
     const serverUrl = import.meta.env.VITE_SYNCKV_SERVER_URL ?? (import.meta.env.DEV
@@ -53,7 +54,12 @@ export class AdminModel {
     return this.favorites.includes(this.prefix)
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    // Route changes reuse one model and must not open duplicate SSE listeners.
+    return this.startPromise ??= this.initialize()
+  }
+
+  private async initialize(): Promise<void> {
     const request = ++this.generation
     this.connection = 'connecting'
     this.message = 'Synchronizing key index…'
@@ -82,17 +88,18 @@ export class AdminModel {
     await this.openPrefix(this.prefixInput)
   }
 
-  async openPrefix(query: string): Promise<void> {
+  async openPrefix(query: string, navigate = true): Promise<void> {
     // Search is local once the root key index has synchronized, so it is cheap
     // enough to run for every input event without debounce or network races.
     this.prefixInput = query
     this.prefix = query
     localStorage.setItem(LAST_PREFIX_KEY, query)
     this.applySearch(query)
+    if (navigate) m.route.set(query ? '/prefix/:prefix...' : '/', { prefix: query }, { replace: true })
     m.redraw()
   }
 
-  async selectKey(key: string): Promise<void> {
+  async selectKey(key: string, navigate = true): Promise<void> {
     if (this.dirty && !window.confirm('Discard the unsaved JSON changes?')) return
     try {
       const value = await this.kv.get(key)
@@ -100,6 +107,7 @@ export class AdminModel {
       this.editorValue = JSON.stringify(value, null, 2)
       this.originalValue = this.editorValue
       this.message = 'Ready'
+      if (navigate) m.route.set('/key/:key...', { key })
     } catch (error) {
       this.message = readableError(error)
       this.connection = 'error'
@@ -138,6 +146,7 @@ export class AdminModel {
       this.originalValue = this.editorValue
       this.connection = 'ready'
       this.message = 'Created'
+      m.route.set('/key/:key...', { key })
     } catch (error) {
       this.connection = 'error'
       this.message = readableError(error)
@@ -176,6 +185,7 @@ export class AdminModel {
       this.originalValue = ''
       this.message = 'Deleted'
       this.connection = 'ready'
+      m.route.set(this.prefix ? '/prefix/:prefix...' : '/', { prefix: this.prefix })
     } catch (error) {
       this.connection = 'error'
       this.message = readableError(error)

@@ -97,6 +97,10 @@ Deno.test("serves the built admin panel below /admin/", async () => {
     assert.equal(index.headers.get("content-type"), "text/html; charset=utf-8");
     assert.match(await index.text(), /admin\/assets\/app\.js/);
 
+    const deepLink = await app.fetch(new Request("http://test/admin/key/dividends%2Fcompanies%2Facme"));
+    assert.equal(deepLink.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.match(await deepLink.text(), /admin\/assets\/app\.js/);
+
     const asset = await app.fetch(new Request("http://test/admin/assets/app.js"));
     assert.equal(asset.headers.get("content-type"), "text/javascript; charset=utf-8");
     assert.match(asset.headers.get("cache-control") ?? "", /immutable/);
