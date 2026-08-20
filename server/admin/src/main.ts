@@ -57,10 +57,10 @@ const App: m.Component = {
             m('input', {
               value: model.prefixInput,
               oninput: (event: InputEvent) => {
-                model.prefixInput = (event.target as HTMLInputElement).value
+                void model.openPrefix((event.target as HTMLInputElement).value)
               },
-              placeholder: 'Search keys by prefix…',
-              'aria-label': 'Key prefix',
+              placeholder: 'Search keys by prefix or text…',
+              'aria-label': 'Search keys',
               spellcheck: false,
             }),
             m('kbd', 'Enter'),

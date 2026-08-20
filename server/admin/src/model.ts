@@ -12,6 +12,7 @@ export class AdminModel {
   prefix = localStorage.getItem(LAST_PREFIX_KEY) ?? ''
   prefixInput = this.prefix
   keys: string[] = []
+  private allKeys: string[] = []
   selectedKey: string | undefined
   editorValue = ''
   originalValue = ''
@@ -52,54 +53,41 @@ export class AdminModel {
   }
 
   async start(): Promise<void> {
-    await this.openPrefix(this.prefix)
+    const request = ++this.generation
+    this.connection = 'connecting'
+    this.message = 'Synchronizing key index…'
+    try {
+      // The admin console subscribes to the root prefix once. This gives it a live
+      // local key index, so both prefix and contains searches are instant and SSE
+      // invalidations update the current result without polling.
+      await this.kv.sync('')
+      // Remove the last narrow subscription left by older admin versions. The root
+      // subscription still covers its records, so this does not evict values.
+      if (this.prefix) await this.kv.unsync(this.prefix)
+      await this.kv.synchronize()
+      if (request !== this.generation) return
+      this.stopWatching = this.kv.watch('', (event) => void this.onChange(event))
+      this.allKeys = await this.kv.keys('')
+      this.applySearch(this.prefix)
+      this.connection = 'ready'
+    } catch (error) {
+      this.connection = 'error'
+      this.message = readableError(error)
+    }
+    m.redraw()
   }
 
   async search(): Promise<void> {
     await this.openPrefix(this.prefixInput)
   }
 
-  async openPrefix(nextPrefix: string): Promise<void> {
-    // Prefixes are literal, so preserve whitespace rather than treating this as a
-    // general-purpose text search.
-    const next = nextPrefix
-    const previous = this.prefix
-    if (next !== previous && this.dirty && !window.confirm('Discard the unsaved JSON changes?')) {
-      this.prefixInput = previous
-      return
-    }
-    const request = ++this.generation
-    this.connection = 'connecting'
-    this.message = 'Synchronizing…'
-    this.prefixInput = next
-    m.redraw()
-
-    try {
-      // Subscribe before dropping the old prefix so changing searches never leaves
-      // the editor without a valid local subscription.
-      await this.kv.sync(next)
-      await this.kv.synchronize()
-      if (request !== this.generation) return
-      if (previous !== next) await this.kv.unsync(previous)
-
-      this.stopWatching?.()
-      this.prefix = next
-      localStorage.setItem(LAST_PREFIX_KEY, next)
-      this.stopWatching = this.kv.watch(next, (event) => void this.onChange(event))
-      this.keys = await this.kv.keys(next)
-      this.connection = 'ready'
-      this.message = `${this.keys.length} ${this.keys.length === 1 ? 'key' : 'keys'}`
-
-      if (!this.selectedKey || !this.keys.includes(this.selectedKey)) {
-        this.selectedKey = undefined
-        this.editorValue = ''
-        this.originalValue = ''
-      }
-    } catch (error) {
-      if (request !== this.generation) return
-      this.connection = 'error'
-      this.message = readableError(error)
-    }
+  async openPrefix(query: string): Promise<void> {
+    // Search is local once the root key index has synchronized, so it is cheap
+    // enough to run for every input event without debounce or network races.
+    this.prefixInput = query
+    this.prefix = query
+    localStorage.setItem(LAST_PREFIX_KEY, query)
+    this.applySearch(query)
     m.redraw()
   }
 
@@ -119,7 +107,9 @@ export class AdminModel {
   }
 
   beginCreate(): void {
-    this.createKeyInput = this.prefix
+    // Reuse the query only when it is a real key prefix. A contains search such as
+    // "companies" should not produce an accidentally root-level key.
+    this.createKeyInput = this.allKeys.some((key) => key.startsWith(this.prefix)) ? this.prefix : ''
     this.createValue = '{\n  \n}'
     this.createError = ''
     this.creating = true
@@ -134,8 +124,7 @@ export class AdminModel {
     const key = this.createKeyInput
     try {
       if (!key) throw new Error('A key is required')
-      if (!key.startsWith(this.prefix)) throw new Error(`Key must begin with “${this.prefix}”`)
-      if (this.keys.includes(key)) throw new Error('That key already exists')
+      if (this.allKeys.includes(key)) throw new Error('That key already exists')
       const value: unknown = JSON.parse(this.createValue)
       this.connection = 'connecting'
       this.message = 'Creating…'
@@ -218,8 +207,8 @@ export class AdminModel {
   private async onChange(event: WatchEvent): Promise<void> {
     // Watchers run after atomic local commits. Remote SSE invalidations therefore
     // reach this view only once the new values are readable from IndexedDB.
-    this.keys = await this.kv.keys(this.prefix)
-    this.message = `${this.keys.length} ${this.keys.length === 1 ? 'key' : 'keys'}`
+    this.allKeys = await this.kv.keys('')
+    this.applySearch(this.prefix)
     this.connection = 'ready'
 
     if (event.key === this.selectedKey && !this.dirty) {
@@ -238,6 +227,23 @@ export class AdminModel {
       }
     }
     m.redraw()
+  }
+
+  private applySearch(query: string): void {
+    const needle = query.toLocaleLowerCase()
+    this.keys = needle
+      ? this.allKeys.filter((key) => key.toLocaleLowerCase().includes(needle))
+      : [...this.allKeys]
+    // True prefix matches are the most likely intent; contains matches such as
+    // "companies" → "dividends/companies/*" follow immediately afterward.
+    this.keys.sort((left, right) => {
+      const leftPrefix = left.toLocaleLowerCase().startsWith(needle)
+      const rightPrefix = right.toLocaleLowerCase().startsWith(needle)
+      return Number(rightPrefix) - Number(leftPrefix) || left.localeCompare(right)
+    })
+    this.message = needle
+      ? `${this.keys.length} of ${this.allKeys.length} keys`
+      : `${this.allKeys.length} ${this.allKeys.length === 1 ? 'key' : 'keys'}`
   }
 }
 
