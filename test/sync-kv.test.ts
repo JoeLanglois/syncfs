@@ -15,8 +15,10 @@ class MemoryTransport implements SyncTransport {
   values = new Map<string, { value: unknown; etag: string }>();
   revision = 0;
   listCalls = 0;
+  offline = false;
   invalidation?: (value: string) => void;
   async list(prefix: string, known?: string): Promise<KeyListing> {
+    if (this.offline) throw new TypeError("network offline");
     this.listCalls++;
     const entries = [...this.values].filter(([key]) => key.startsWith(prefix)).map(([key, value]) => ({ key, etag: value.etag }));
     const etag = `${this.revision}:${prefix}`;
@@ -25,6 +27,7 @@ class MemoryTransport implements SyncTransport {
   async get(key: string): Promise<{ value: unknown; etag: string }> { return structuredClone(this.values.get(key)!); }
   async fetch(key: string): Promise<unknown> { return (await this.get(key)).value; }
   async transact(transaction: PendingTransaction): Promise<{ etags: Record<string, string | null> }> {
+    if (this.offline) throw new TypeError("network offline");
     // Validate the complete transaction before changing any remote value.
     for (const operation of transaction.operations) {
       const current = this.values.get(operation.key);
@@ -58,7 +61,10 @@ function create(options: ConstructorParameters<typeof SyncKv>[0] = {}): SyncKv {
   stores.push(store);
   return store;
 }
-afterEach(async () => Promise.all(stores.splice(0).map((store) => store.close())));
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((store) => store.close()));
+  vi.unstubAllGlobals();
+});
 
 describe("local key-value API", () => {
   it("sets, gets, lists, watches, and deletes subscribed keys", async () => {
@@ -136,6 +142,28 @@ describe("local key-value API", () => {
 });
 
 describe("synchronization", () => {
+  it("retries pending work when the browser reports that it is online again", async () => {
+    let online: EventListener | undefined;
+    vi.stubGlobal("addEventListener", vi.fn((type: string, listener: EventListener) => {
+      if (type === "online") online = listener;
+    }));
+    vi.stubGlobal("removeEventListener", vi.fn());
+    const transport = new MemoryTransport();
+    const errors = vi.fn();
+    const store = create({ transport, onError: errors });
+    await store.sync("todo/");
+    await store.synchronize();
+
+    transport.offline = true;
+    await store.set("todo/offline", "queued");
+    await vi.waitFor(() => expect(errors).toHaveBeenCalled());
+    expect(transport.values.has("todo/offline")).toBe(false);
+
+    transport.offline = false;
+    online?.(new Event("online"));
+    await vi.waitFor(() => expect(transport.values.get("todo/offline")?.value).toBe("queued"));
+  });
+
   it("uploads a local mutation without unnecessarily pulling its prefix", async () => {
     const transport = new MemoryTransport();
     const store = create({ transport });

@@ -34,6 +34,7 @@ const archived = await kv.fetch("archive/old"); // intentionally remote-only
 - `fetchKeys(prefix)` and `fetchAll(prefix)` query remote-only prefixes without caching.
 - `watch(prefix, callback)` observes committed local, cross-tab, and remote changes.
 - `synchronize()` explicitly waits for pending synchronization.
+- Browser/Electron `online` events automatically retry queued work and reconcile prefixes.
 - `close()` releases IndexedDB, timers, BroadcastChannel, and SSE resources.
 
 Values may be anything supported by IndexedDB structured clone. The default HTTP

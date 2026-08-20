@@ -50,8 +50,8 @@ overwrite remote changes.
 ## Live sync
 
 SSE is only a prefix-scoped invalidation signal. It is batched, excludes the writing
-client, and is not required for correctness. Startup and periodic fallback perform
-normal ETag-based synchronization.
+client, and is not required for correctness. Startup, browser `online` events, and
+periodic fallback perform normal ETag-based synchronization.
 
 ## Principle
 

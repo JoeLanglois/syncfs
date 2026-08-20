@@ -1,5 +1,5 @@
 import { Store, type Conditions, type TransactionOperation } from "./store.ts";
-import { HttpError } from "./path.ts";
+import { HttpError } from "./errors.ts";
 
 type Sender = (id: number, prefix: string) => void;
 interface Listener {

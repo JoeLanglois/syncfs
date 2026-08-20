@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { HttpError } from "./path.ts";
+import { HttpError } from "./errors.ts";
 
 type Row = Record<string, unknown>;
 export interface Conditions { ifMatch?: string; ifNoneMatch?: string }

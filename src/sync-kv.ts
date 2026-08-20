@@ -42,6 +42,12 @@ export class SyncKv {
   private syncRequested = false;
   private pullRequested = false;
   private closed = false;
+  private readonly onlineListener = (): void => {
+    // `online` is a hint rather than proof that the server is reachable. Normal
+    // synchronization still handles a failed request and leaves its queue intact.
+    this.queueSync();
+  };
+  private listeningForOnline = false;
   readonly ready: Promise<void>;
 
   constructor(options: SyncKvOptions = {}) {
@@ -56,6 +62,10 @@ export class SyncKv {
       this.broadcast.onmessage = (message: MessageEvent<{ source: string; event: WatchEvent }>) => {
         if (message.data.source !== this.instanceId) this.emit(message.data.event, false);
       };
+    }
+    if (typeof globalThis.addEventListener === "function") {
+      globalThis.addEventListener("online", this.onlineListener);
+      this.listeningForOnline = true;
     }
     this.ready = this.initialize(options.syncIntervalMs ?? 30_000);
   }
@@ -211,6 +221,10 @@ export class SyncKv {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.stopListening?.();
+    if (this.listeningForOnline && typeof globalThis.removeEventListener === "function") {
+      globalThis.removeEventListener("online", this.onlineListener);
+      this.listeningForOnline = false;
+    }
     this.broadcast?.close();
     await this.synchronization;
     await this.database.close();
