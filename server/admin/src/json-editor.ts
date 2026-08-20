@@ -65,17 +65,19 @@ export const JsonEditor: m.Component<EditorAttrs> = {
         ],
       }),
     })
-    ;(vnode.state as { view?: EditorView }).view = view
+    // `view` is Mithril's render hook. Store the CodeMirror instance under a
+    // different name or Mithril will try to invoke EditorView as a component.
+    ;(vnode.state as { editor?: EditorView }).editor = view
   },
 
   onupdate(vnode) {
-    const view = (vnode.state as { view?: EditorView }).view
+    const view = (vnode.state as { editor?: EditorView }).editor
     if (!view || view.state.doc.toString() === vnode.attrs.value) return
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: vnode.attrs.value } })
   },
 
   onremove(vnode) {
-    ;(vnode.state as { view?: EditorView }).view?.destroy()
+    ;(vnode.state as { editor?: EditorView }).editor?.destroy()
   },
 
   view() {
