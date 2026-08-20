@@ -151,6 +151,13 @@ async function adminAsset(pathname: string, head: boolean, root: URL): Promise<R
   } catch {
     throw new HttpError(400, "Invalid admin asset path");
   }
+  // Mithril history routes are virtual paths, not files. Resolve these directly to
+  // the app shell instead of relying on a failed filesystem lookup as a fallback.
+  if (
+    relative === "key" || relative.startsWith("key/") ||
+    relative === "prefix" || relative.startsWith("prefix/")
+  ) relative = "index.html";
+
   // URL resolution makes traversal checks straightforward and works regardless of
   // where the repository or container is installed.
   const normalizedRoot = root.href.endsWith("/") ? root : new URL(`${root.href}/`);
