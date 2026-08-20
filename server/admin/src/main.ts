@@ -77,7 +77,7 @@ const App: m.Component = {
           m('section.key-browser', [
             m('.pane-heading', [
               m('div', [m('h1', model.prefix || 'All keys'), m('span.count', String(model.keys.length))]),
-              m('span.muted', 'Prefix'),
+              m('button.button.compact', { onclick: () => model.beginCreate() }, '+ New key'),
             ]),
             m('.key-list', model.keys.length === 0
               ? m('.empty-list', [m('span', '⌁'), m('p', 'No matching keys')])
@@ -122,14 +122,63 @@ const App: m.Component = {
           model.dirty ? m('span.unsaved', 'Unsaved changes') : null,
         ]),
       ]),
+
+      model.creating ? m('.dialog-backdrop', {
+        onclick: (event: MouseEvent) => {
+          if (event.target === event.currentTarget) model.cancelCreate()
+        },
+      }, m('section.create-dialog', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'create-title' }, [
+        m('.dialog-heading', [
+          m('div', [m('span.eyebrow', 'New record'), m('h2#create-title', 'Create key')]),
+          m('button.icon-button', { onclick: () => model.cancelCreate(), 'aria-label': 'Close dialog' }, '×'),
+        ]),
+        m('.dialog-fields', [
+          m('label.key-field', [
+            m('span', 'Key'),
+            m('input', {
+              value: model.createKeyInput,
+              oninput: (event: InputEvent) => {
+                model.createKeyInput = (event.target as HTMLInputElement).value
+                model.createError = ''
+              },
+              oncreate: (vnode: m.VnodeDOM) => (vnode.dom as HTMLInputElement).focus(),
+              spellcheck: false,
+              placeholder: model.prefix || 'namespace/key',
+            }),
+          ]),
+          m('label.editor-label', 'JSON value'),
+          m('.create-editor', m(JsonEditor, {
+            value: model.createValue,
+            onChange: (value) => {
+              model.createValue = value
+              model.createError = ''
+              m.redraw()
+            },
+          })),
+          model.createError ? m('p.dialog-error', model.createError) : null,
+        ]),
+        m('.dialog-actions', [
+          m('button.button', { onclick: () => model.cancelCreate() }, 'Cancel'),
+          m('button.button.primary', {
+            disabled: model.connection === 'connecting',
+            onclick: () => void model.create(),
+          }, 'Create key'),
+        ]),
+      ])) : null,
     ])
   },
 }
 
 function saveShortcut(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && model.creating) {
+    model.cancelCreate()
+    m.redraw()
+    return
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault()
-    if (model.dirty) void model.save()
+    if (model.creating) void model.create()
+    else if (model.dirty) void model.save()
   }
 }
 

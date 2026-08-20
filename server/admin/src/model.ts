@@ -19,6 +19,10 @@ export class AdminModel {
   message = 'Connecting…'
   favorites = readFavorites()
   theme: 'light' | 'dark' = preferredTheme()
+  creating = false
+  createKeyInput = ''
+  createValue = '{\n  \n}'
+  createError = ''
 
   private stopWatching: (() => void) | undefined
   private generation = 0
@@ -110,6 +114,44 @@ export class AdminModel {
     } catch (error) {
       this.message = readableError(error)
       this.connection = 'error'
+    }
+    m.redraw()
+  }
+
+  beginCreate(): void {
+    this.createKeyInput = this.prefix
+    this.createValue = '{\n  \n}'
+    this.createError = ''
+    this.creating = true
+  }
+
+  cancelCreate(): void {
+    this.creating = false
+    this.createError = ''
+  }
+
+  async create(): Promise<void> {
+    const key = this.createKeyInput
+    try {
+      if (!key) throw new Error('A key is required')
+      if (!key.startsWith(this.prefix)) throw new Error(`Key must begin with “${this.prefix}”`)
+      if (this.keys.includes(key)) throw new Error('That key already exists')
+      const value: unknown = JSON.parse(this.createValue)
+      this.connection = 'connecting'
+      this.message = 'Creating…'
+      this.createError = ''
+      await this.kv.set(key, value)
+      await this.kv.synchronize()
+      this.creating = false
+      this.selectedKey = key
+      this.editorValue = JSON.stringify(value, null, 2)
+      this.originalValue = this.editorValue
+      this.connection = 'ready'
+      this.message = 'Created'
+    } catch (error) {
+      this.connection = 'error'
+      this.message = readableError(error)
+      this.createError = error instanceof SyntaxError ? `Invalid JSON: ${error.message}` : readableError(error)
     }
     m.redraw()
   }

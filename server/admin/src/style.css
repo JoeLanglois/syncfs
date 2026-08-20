@@ -288,6 +288,7 @@ h1 { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsi
 .button.danger { color: var(--destructive); }
 .button.danger:hover { border-color: var(--destructive); background: var(--destructive-soft); }
 .button:disabled { opacity: .45; cursor: default; filter: none; }
+.button.compact { height: 27px; padding: 0 8px; color: var(--muted-foreground); }
 .json-editor { min-width: 0; min-height: 0; overflow: hidden; background: var(--panel); }
 .cm-editor { height: 100%; background: var(--panel); color: var(--foreground); font: 12px/1.65 'JetBrains Mono', monospace; }
 .cm-editor.cm-focused { outline: none; }
@@ -321,6 +322,61 @@ h1 { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsi
 .connection.error { color: var(--destructive); }
 .connection.error i { background: var(--destructive); }
 .unsaved { margin-left: auto; color: var(--warning); }
+
+.dialog-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: hsl(222 30% 5% / 0.48);
+  backdrop-filter: blur(2px);
+}
+.create-dialog {
+  display: grid;
+  grid-template-rows: 58px minmax(0, 1fr) 55px;
+  width: min(650px, 92vw);
+  height: min(520px, 85vh);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 20px 55px hsl(222 40% 5% / 0.3);
+}
+.dialog-heading, .dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 15px;
+}
+.dialog-heading { border-bottom: 1px solid var(--border); }
+.dialog-heading h2 { font-size: 14px; font-weight: 600; }
+.dialog-heading .icon-button { font-size: 20px; }
+.dialog-fields {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+  padding: 15px;
+  gap: 8px;
+}
+.key-field { display: grid; gap: 6px; color: var(--muted-foreground); font-size: 11px; font-weight: 500; }
+.key-field input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  background: var(--panel-subtle);
+  font: 12px 'JetBrains Mono', monospace;
+}
+.key-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.editor-label { color: var(--muted-foreground); font-size: 11px; font-weight: 500; }
+.create-editor { min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.create-editor .json-editor { height: 100%; }
+.dialog-error { color: var(--destructive); font-size: 11px; }
+.dialog-actions { justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); background: var(--panel-subtle); }
 
 @media (max-width: 760px) {
   :root { --sidebar-width: 52px; }

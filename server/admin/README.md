@@ -20,6 +20,7 @@ Set `VITE_SYNCKV_SERVER_URL` to use another server.
 ## Features
 
 - Prefix-based key search with live synchronized results
+- Creating and deleting keys within the active prefix
 - JSON editing and syntax highlighting powered by CodeMirror 6
 - Optimistic conflict-safe saves through `@synckv/client`
 - Automatic updates through the server's SSE invalidations
