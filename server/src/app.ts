@@ -41,7 +41,10 @@ class EventHub {
 
 export interface App { fetch(request: Request): Promise<Response>; close(): void }
 
-export function createApp(databasePath: string): App {
+export function createApp(
+  databasePath: string,
+  adminRoot = new URL("../admin/dist/", import.meta.url),
+): App {
   const store = new Store(databasePath);
   const events = new EventHub();
 
@@ -49,6 +52,12 @@ export function createApp(databasePath: string): App {
     if (request.method === "OPTIONS") return cors(new Response(null, { status: 204 }));
     try {
       const url = new URL(request.url);
+      if (url.pathname === "/admin") {
+        return new Response(null, { status: 308, headers: { location: "/admin/" } });
+      }
+      if (url.pathname.startsWith("/admin/") && (request.method === "GET" || request.method === "HEAD")) {
+        return await adminAsset(url.pathname, request.method === "HEAD", adminRoot);
+      }
       if (url.pathname === "/health" && request.method === "GET") return json({ ok: true });
       if (url.pathname === "/v1/events" && request.method === "GET") return eventStream(request, url, store, events);
 
@@ -132,6 +141,55 @@ export function createApp(databasePath: string): App {
   }
 
   return { fetch: handle, close: () => store.close() };
+}
+
+/** Serve the Vite output without adding a second production web server. */
+async function adminAsset(pathname: string, head: boolean, root: URL): Promise<Response> {
+  let relative: string;
+  try {
+    relative = decodeURIComponent(pathname.slice("/admin/".length)) || "index.html";
+  } catch {
+    throw new HttpError(400, "Invalid admin asset path");
+  }
+  // URL resolution makes traversal checks straightforward and works regardless of
+  // where the repository or container is installed.
+  const normalizedRoot = root.href.endsWith("/") ? root : new URL(`${root.href}/`);
+  const file = new URL(relative, normalizedRoot);
+  if (!file.href.startsWith(normalizedRoot.href) || relative.includes("\\")) {
+    throw new HttpError(404, "Admin asset not found");
+  }
+
+  try {
+    const body = await Deno.readFile(file);
+    const headers = new Headers({
+      "content-type": contentType(relative),
+      "x-content-type-options": "nosniff",
+      // Vite fingerprints production assets; the HTML entry point must continue
+      // checking for a newly built asset name.
+      "cache-control": relative === "index.html"
+        ? "no-cache"
+        : "public, max-age=31536000, immutable",
+    });
+    return new Response(head ? null : body, { headers });
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) throw new HttpError(404, "Admin asset not found");
+    throw error;
+  }
+}
+
+function contentType(path: string): string {
+  const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return {
+    css: "text/css; charset=utf-8",
+    html: "text/html; charset=utf-8",
+    js: "text/javascript; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    map: "application/json; charset=utf-8",
+    png: "image/png",
+    svg: "image/svg+xml",
+    webp: "image/webp",
+    woff2: "font/woff2",
+  }[extension] ?? "application/octet-stream";
 }
 
 function applyWireMutation(store: Store, raw: unknown, origin?: string): unknown {

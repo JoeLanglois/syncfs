@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  // The Deno server mounts the production bundle below /admin/.
+  base: '/admin/',
   resolve: {
     // CodeMirror extensions rely on `instanceof` checks against classes from
     // @codemirror/state. Force every extension through one module instance,

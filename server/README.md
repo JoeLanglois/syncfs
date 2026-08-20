@@ -6,9 +6,19 @@ log in SQLite.
 
 ## Admin panel
 
-The Mithril + Vite console in `admin/` searches keys by synchronized prefix, edits
-JSON values, and updates automatically from SSE invalidations. Run `npm install` at
-the repository root and in `server/admin`, then use `npm run admin:dev` from the root.
+The Mithril + Vite console in `admin/` searches keys, edits JSON values, and updates
+automatically from SSE invalidations. A production server serves its built bundle at
+`/admin/` on the same origin as the API.
+
+Build the client, admin bundle, and type-check the server together:
+
+```sh
+cd server
+deno task build
+```
+
+For frontend development, use `npm run admin:dev` from the repository root. Vite
+connects to the separately running Deno API and provides HMR.
 
 ## Run
 
@@ -18,6 +28,7 @@ deno task start -- --hostname 127.0.0.1 --port 8787 --db ./data/synckv.sqlite
 ```
 
 Environment alternatives are `HOST`, `PORT`, `DATABASE_PATH`, and `CORS_ORIGIN`.
+After `deno task build`, open <http://localhost:8787/admin/> for the admin panel.
 
 ## Protocol
 
@@ -45,7 +56,7 @@ over HTTP.
 ## Docker
 
 ```sh
-docker build -t synckv-server ./server
+docker build -f server/Dockerfile -t synckv-server .
 docker run --rm -p 8787:8787 -v synckv-data:/data synckv-server
 ```
 

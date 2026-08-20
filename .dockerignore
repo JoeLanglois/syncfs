@@ -1,0 +1,12 @@
+**/node_modules/
+**/dist/
+coverage/
+.git/
+server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+.env
+.env.*
+dividends/

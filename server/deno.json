@@ -2,6 +2,7 @@
   "tasks": {
     "start": "deno run --allow-net --allow-read --allow-write --allow-env src/main.ts",
     "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env src/main.ts",
+    "build": "npm --prefix .. ci && npm --prefix .. run build && npm --prefix admin ci && npm --prefix admin run build && deno task check",
     "check": "deno check src/main.ts src/app.ts src/store.ts",
     "test": "deno test -A"
   },

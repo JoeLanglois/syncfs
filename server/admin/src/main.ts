@@ -119,7 +119,9 @@ const App: m.Component = {
 
         m('footer.statusbar', [
           m('span.connection', { class: model.connection }, [m('i'), model.message]),
-          m('span', import.meta.env.VITE_SYNCKV_SERVER_URL ?? `${window.location.hostname}:8787`),
+          m('span', import.meta.env.VITE_SYNCKV_SERVER_URL ?? (import.meta.env.DEV
+            ? `${window.location.hostname}:8787`
+            : window.location.host)),
           model.dirty ? m('span.unsaved', 'Unsaved changes') : null,
         ]),
       ]),

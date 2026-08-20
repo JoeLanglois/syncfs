@@ -29,8 +29,9 @@ export class AdminModel {
   private generation = 0
 
   constructor() {
-    const serverUrl = import.meta.env.VITE_SYNCKV_SERVER_URL ??
-      `http://${window.location.hostname}:8787`
+    const serverUrl = import.meta.env.VITE_SYNCKV_SERVER_URL ?? (import.meta.env.DEV
+      ? `http://${window.location.hostname}:8787`
+      : window.location.origin)
     this.kv = new SyncKv({
       dbName: 'synckv-admin',
       transport: new HttpTransport({ baseUrl: serverUrl }),

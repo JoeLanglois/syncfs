@@ -15,7 +15,8 @@ npm run dev
 
 Start the Deno server separately from `server/` with `deno task dev`. Vite listens on
 <http://localhost:5173> and connects to SyncKv at port 8787 on the same hostname.
-Set `VITE_SYNCKV_SERVER_URL` to use another server.
+The production bundle uses the server's own origin. Set `VITE_SYNCKV_SERVER_URL` to
+override either default.
 
 ## Features
 

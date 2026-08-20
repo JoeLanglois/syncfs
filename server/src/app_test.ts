@@ -82,6 +82,31 @@ Deno.test("transactions are all-or-nothing and idempotent", async () => {
   } finally { app.close(); }
 });
 
+Deno.test("serves the built admin panel below /admin/", async () => {
+  const directory = await Deno.makeTempDir();
+  await Deno.mkdir(`${directory}/assets`);
+  await Deno.writeTextFile(`${directory}/index.html`, '<script src="/admin/assets/app.js"></script>');
+  await Deno.writeTextFile(`${directory}/assets/app.js`, "console.log('admin')");
+  const app = createApp(":memory:", new URL(`file://${directory}/`));
+  try {
+    const redirect = await app.fetch(new Request("http://test/admin", { redirect: "manual" }));
+    assert.equal(redirect.status, 308);
+    assert.equal(redirect.headers.get("location"), "/admin/");
+
+    const index = await app.fetch(new Request("http://test/admin/"));
+    assert.equal(index.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.match(await index.text(), /admin\/assets\/app\.js/);
+
+    const asset = await app.fetch(new Request("http://test/admin/assets/app.js"));
+    assert.equal(asset.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.match(asset.headers.get("cache-control") ?? "", /immutable/);
+    assert.equal(await asset.text(), "console.log('admin')");
+  } finally {
+    app.close();
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("SQLite values survive reopening", async () => {
   const directory = await Deno.makeTempDir();
   const filename = `${directory}/kv.sqlite`;
