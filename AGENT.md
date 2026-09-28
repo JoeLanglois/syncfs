@@ -1,6 +1,6 @@
 # Local-First Key-Value Store — API & Sync Strategy
 
-Build a simple local-first key-value library with a Deno sync server and TypeScript
+Build a simple local-first key-value library with a Go sync server and TypeScript
 browser/Electron client.
 
 ## Core model
@@ -43,7 +43,7 @@ compares those with IndexedDB, bulk-downloads changed values, and removes local 
 missing remotely.
 
 Writes use `If-Match`; creates use `If-None-Match: *`. Multi-key transactions commit
-atomically in IndexedDB, queue as one unit, and apply in one SQLite transaction.
+atomically in IndexedDB, queue as one unit, and apply in one storage transaction.
 Persistent idempotency keys make retries safe. Conflicts must never silently
 overwrite remote changes.
 

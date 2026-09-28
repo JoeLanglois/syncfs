@@ -56,10 +56,10 @@ idempotency keys; conflicts never silently overwrite local or remote data. A rem
 transaction is all-or-nothing, while its optimistic local state remains for explicit
 conflict resolution if the server rejects it.
 
-## Deno server
+## Go server
 
-The SQLite-backed server is in [`server/`](server/). See its README for local and
-Docker instructions.
+The server is in [`server/`](server/) and supports interchangeable SQLite, local-file,
+and in-memory storage. See its README for local and Docker instructions.
 
 ## TodoMVC example
 

@@ -13,10 +13,10 @@ const clients: SyncKv[] = [];
 
 beforeAll(async () => {
   temporaryDirectory = await mkdtemp(join(tmpdir(), "synckv-server-"));
-  server = spawn("deno", ["run", "-A", "server/src/main.ts", "--hostname", "127.0.0.1", "--port", "0", "--db", join(temporaryDirectory, "test.sqlite")], { cwd: new URL("..", import.meta.url).pathname });
+  server = spawn("go", ["run", "./cmd/synckv", "--hostname", "127.0.0.1", "--port", "0", "--db", join(temporaryDirectory, "test.sqlite")], { cwd: join(new URL("..", import.meta.url).pathname, "server") });
   baseUrl = await new Promise((resolve, reject) => {
     let output = "";
-    const timeout = setTimeout(() => reject(new Error(output)), 10_000);
+    const timeout = setTimeout(() => reject(new Error(output)), 60_000);
     server.stdout.on("data", (chunk: Buffer) => {
       output += chunk;
       for (const line of output.split("\n")) try {
@@ -49,7 +49,7 @@ function client(id = crypto.randomUUID()): SyncKv {
   return store;
 }
 
-describe("SyncKv against the Deno server", () => {
+describe("SyncKv against the Go server", () => {
   it("covers prefixes, values, keys, fetch, watch, delete, and unsync", async () => {
     const first = client("first");
     await first.sync("integration/data/");

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  // The Deno server mounts the production bundle below /admin/.
+  // The Go server mounts the production bundle below /admin/.
   base: '/admin/',
   resolve: {
     // CodeMirror extensions rely on `instanceof` checks against classes from
