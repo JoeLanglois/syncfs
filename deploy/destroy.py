@@ -1,10 +1,21 @@
 """Remove SyncKv while preserving its persistent data and prepared backups."""
 
+import os
+
 from pyinfra.operations import files, server, systemd
 
 SERVICE = "synckv"
 UNIT = f"{SERVICE}.service"
+PORT = int(os.environ.get("SERVICE_PORT", "8787"))
 
+server.shell(
+    name="Remove the private SyncKv Tailscale Serve route",
+    commands=(
+        f"if tailscale serve status --json | grep -Fq 'http://127.0.0.1:{PORT}'; then "
+        "tailscale serve --https=443 off; fi"
+    ),
+    _sudo=True,
+)
 systemd.service(
     name="Stop and disable SyncKv",
     service=UNIT,

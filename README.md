@@ -75,8 +75,8 @@ and in-memory storage. See its README for local and Docker instructions.
 ## Tailnet deployment
 
 [`deploy/`](deploy/) contains a pyinfra deployment compatible with the conventions in
-`~/projects/vps`. It installs a non-root systemd service bound exclusively to the
-server's Tailscale IPv4 address, adds no public Caddy route, and registers a
+`~/projects/vps`. It installs a non-root loopback-only systemd service, publishes it
+privately with Tailscale Serve HTTPS, adds no public Caddy route, and registers a
 consistent Restic backup hook.
 
 ## TodoMVC example

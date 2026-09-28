@@ -2,6 +2,7 @@
 
 import io
 import ipaddress
+import json
 import os
 from pathlib import Path
 
@@ -39,6 +40,14 @@ except ValueError as error:
 if tailnet_ip.version != 4 or tailnet_ip not in ipaddress.ip_network("100.64.0.0/10"):
     raise RuntimeError("Refusing to deploy: server address is not a Tailscale IPv4 address")
 tailnet_address = str(tailnet_ip)
+try:
+    tailscale_status = json.loads(host.get_fact(Command, command="tailscale status --json"))
+    tailnet_dns = str(tailscale_status["Self"]["DNSName"]).rstrip(".")
+except (json.JSONDecodeError, KeyError, TypeError) as error:
+    raise RuntimeError("Could not determine the server's Tailscale HTTPS name") from error
+if not tailnet_dns.endswith(".ts.net"):
+    raise RuntimeError("Refusing to deploy: Tailscale HTTPS name does not end in .ts.net")
+https_origin = f"https://{tailnet_dns}"
 
 server.shell(
     name="Verify private deployment prerequisites",
@@ -47,7 +56,6 @@ server.shell(
         "tailscale status >/dev/null",
         "test -d /etc/restic/paths.d",
         "test -d /etc/restic/hooks.d",
-        f"ufw status | grep -Eq '^{PORT}/tcp on tailscale0[[:space:]]+ALLOW'",
         f"test ! -e /etc/caddy/apps/{SERVICE}.caddy",
     ],
     _sudo=True,
@@ -107,13 +115,13 @@ environment = files.put(
     src=io.StringIO(
         "\n".join(
             [
-                f"HOST={tailnet_address}",
+                "HOST=127.0.0.1",
                 f"PORT={PORT}",
                 "STORAGE_BACKEND=sqlite",
                 f"DATABASE_PATH={DATA_DIR}/synckv.sqlite",
                 f"ADMIN_ROOT={APP_DIR}/admin/dist",
                 f"MAX_BLOB_BYTES={MAX_BLOB_BYTES}",
-                "CORS_ORIGIN=*",
+                f"CORS_ORIGIN={https_origin}",
                 "",
             ]
         )
@@ -152,6 +160,11 @@ systemd.service(
     enabled=True,
     _sudo=True,
 )
+server.shell(
+    name="Publish SyncKv privately with Tailscale Serve HTTPS",
+    commands=f"tailscale serve --bg --yes http://127.0.0.1:{PORT}",
+    _sudo=True,
+)
 
 backup_path = files.template(
     name="Register the SyncKv prepared backup with Restic",
@@ -182,13 +195,15 @@ server.shell(
         f"systemctl is-active {SERVICE}.service",
         (
             "for attempt in $(seq 1 20); do "
-            f"curl --noproxy '*' --fail --silent --show-error http://{tailnet_address}:{PORT}/health "
+            f"curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:{PORT}/health "
             "&& exit 0; sleep 1; done; exit 1"
         ),
         f"test \"$(ss -H -ltn 'sport = :{PORT}' | wc -l)\" -eq 1",
-        f"ss -H -ltn 'sport = :{PORT}' | awk '{{print $4}}' | grep -Fxq '{tailnet_address}:{PORT}'",
-        f"! ss -H -ltn 'sport = :{PORT}' | awk '{{print $4}}' | grep -Eq '^(0\\.0\\.0\\.0|127\\.0\\.0\\.1|\\[::\\]|\\*):'",
-        f"test ! -e /etc/caddy/apps/{SERVICE}.caddy",
+        f"ss -H -ltn 'sport = :{PORT}' | awk '{{print $4}}' | grep -Fxq '127.0.0.1:{PORT}'",
+        f"! ss -H -ltn 'sport = :{PORT}' | awk '{{print $4}}' | grep -Eq '^(0\\.0\\.0\\.0|{tailnet_address}|\\[::\\]|\\*):'",
+        f"curl --noproxy '*' --fail --silent --show-error {https_origin}/health",
+        f"tailscale serve status --json | grep -Fq 'http://127.0.0.1:{PORT}'",
+        "tailscale funnel status | grep -Fq '(tailnet only)'",
     ],
     _sudo=True,
 )

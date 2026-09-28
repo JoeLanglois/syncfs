@@ -1,29 +1,18 @@
-# Tailnet-only SyncKv deployment
+# Private HTTPS SyncKv deployment
 
 This deployment follows the conventions in `~/projects/vps`: pyinfra manages a
 non-root systemd service, replaceable files live in `/srv/apps`, persistent state
 lives in `/srv/data`, and Restic receives an application-prepared snapshot.
 
-SyncKv deliberately has no Caddy fragment or public DNS route. The process binds the
-VPS's exact Tailscale IPv4 address, never `0.0.0.0`, loopback, or a public address.
-Clients use `http://racknerd-vps:8787` while connected to the same tailnet; Tailscale
-provides transport encryption.
+SyncKv listens only on `127.0.0.1:8787`. Tailscale Serve terminates trusted HTTPS and
+makes it available only inside the tailnet at:
 
-## One-time firewall configuration
-
-The global VPS provisioner owns UFW. Re-provision the machine with the private port
-allowed only on `tailscale0`:
-
-```sh
-cd ~/projects/vps
-TAILSCALE_TCP_PORTS=8787 VPS_HOST=racknerd-vps ./provision.sh
+```text
+https://racknerd-vps.tail8692b.ts.net
 ```
 
-This does not create a public `8787/tcp` rule. The SyncKv deployment refuses to
-continue if the interface-scoped rule is absent.
-
-Consider a Tailscale ACL restricting the VPS and port 8787 to the users/devices that
-need SyncKv. SyncKv itself intentionally has no authentication.
+There is no SyncKv Caddy fragment, public DNS route, Funnel, or non-loopback
+application listener. No UFW application-port exception is required.
 
 ## Deploy
 
@@ -39,27 +28,34 @@ runs the VPS project's pyinfra installation. Optional variables are `VPS_PROJECT
 `PYINFRA`, `VPS_SSH_USER`, `VPS_SSH_KEY`, `VPS_SSH_PORT`, `SERVICE_PORT`,
 `TARGET_ARCH` (`amd64` or `arm64`), and `MAX_BLOB_BYTES`.
 
+The deployment discovers the node's current `*.ts.net` name instead of embedding it
+in configuration. It configures `tailscale serve`, sets CORS to that exact HTTPS
+origin, and refuses a non-Tailscale address or name.
+
 The remote layout is:
 
 ```text
 /srv/apps/synckv/synckv          replaceable binary
 /srv/apps/synckv/admin/dist      replaceable admin bundle
 /srv/data/synckv/synckv.sqlite  persistent JSON/blob data
-/etc/synckv/synckv.env          generated tailnet-only configuration
+/etc/synckv/synckv.env          generated loopback configuration
 ```
 
-The deploy verifies the UFW rule, service health through the Tailscale address, the
-exact socket binding, and the absence of a Caddy route.
+Verification checks the loopback-only socket, local health, private HTTPS health,
+Serve's proxy target, disabled Funnel status, and the absence of a Caddy route.
+Consider a Tailscale ACL restricting this node's HTTPS endpoint to the users/devices
+that need SyncKv. SyncKv itself intentionally has no authentication.
 
 ## Operations
 
 ```sh
 ssh deploy@racknerd-vps 'sudo systemctl status synckv'
 ssh deploy@racknerd-vps 'sudo journalctl -u synckv -f'
-curl http://racknerd-vps:8787/health
+ssh deploy@racknerd-vps 'sudo tailscale serve status'
+curl https://racknerd-vps.tail8692b.ts.net/health
 ```
 
-Open `http://racknerd-vps:8787/admin/` from a tailnet-connected browser.
+Open `https://racknerd-vps.tail8692b.ts.net/admin/` from a tailnet-connected browser.
 
 ## Backups and restore
 
@@ -73,14 +69,10 @@ contents of `/srv/data/synckv` from the prepared archive, restore ownership to
 
 ## Remove
 
-Removal preserves persistent data and prepared backups:
+Removal disables the Tailscale Serve HTTPS route and systemd unit while preserving
+persistent data and prepared backups:
 
 ```sh
 VPS_HOST=racknerd-vps \
   ~/projects/vps/.venv/bin/pyinfra deploy/inventory.py deploy/destroy.py
 ```
-
-Remove port 8787 from `TAILSCALE_TCP_PORTS` during a later global provisioning run if
-no other private service uses it. Existing UFW rules are not automatically deleted by
-omitting the variable; remove an obsolete rule explicitly and verify access before
-changing firewall policy.
