@@ -1,3 +1,4 @@
+import { randomId, sha256 } from "./crypto.js";
 import type {
   BlobManifest, BlobSyncStrategy, PendingOperation, PendingTransaction, TransactionOperation,
   TransactionResult, ValueRecord, WatchEvent,
@@ -15,8 +16,7 @@ function completed(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error); transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB transaction aborted")); });
 }
 export async function blobSHA256(value: Blob): Promise<string> {
-  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", await value.arrayBuffer()));
-  return [...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return sha256(await value.arrayBuffer());
 }
 async function manifest(value: Blob, options?: { filename?: string; contentType?: string }): Promise<BlobManifest> {
   return { sha256: await blobSHA256(value), size: value.size, contentType: options?.contentType ?? value.type ?? "application/octet-stream", ...(options?.filename ? { filename: options.filename } : {}) };
@@ -68,7 +68,7 @@ export class LocalDatabase {
 
   async apply(operations: readonly TransactionOperation[]): Promise<{ transactionId: string; events: WatchEvent[] }> {
     const prepared = await Promise.all(operations.map(async (operation) => operation.type === "setBlob" ? { operation, blob: await manifest(operation.value, operation.options) } : { operation }));
-    const db = await this.ready; const tx = db.transaction([VALUES, TRANSACTIONS, BLOBS], "readwrite"); const values=tx.objectStore(VALUES);const transactionId=crypto.randomUUID();const pending:PendingOperation[]=[];const events:WatchEvent[]=[];
+    const db = await this.ready; const tx = db.transaction([VALUES, TRANSACTIONS, BLOBS], "readwrite"); const values=tx.objectStore(VALUES);const transactionId=randomId();const pending:PendingOperation[]=[];const events:WatchEvent[]=[];
     for (const item of prepared) {
       const operation=item.operation;const current=await request<ValueRecord|undefined>(values.get(operation.key));const base=current?.etag?{baseEtag:current.etag}:{};
       if(operation.type==="set"){values.put({key:operation.key,kind:"json",value:operation.value,...(current?.etag?{etag:current.etag}:{})});pending.push({type:"set",key:operation.key,value:operation.value,...base});events.push({type:"set",key:operation.key,transactionId})}

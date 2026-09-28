@@ -74,12 +74,21 @@ for directory, owner, group, mode in (
     )
 
 binary = files.put(
-    name="Deploy the SyncKv Linux binary",
+    name="Upload the SyncKv Linux binary",
     src=str(BINARY),
-    dest=f"{APP_DIR}/synckv",
+    dest=f"{APP_DIR}/.synckv-deployed",
     user="root",
     group=SERVICE_USER,
     mode="0750",
+    _sudo=True,
+)
+server.shell(
+    name="Atomically install the SyncKv Linux binary",
+    commands=(
+        f"install -o root -g {SERVICE_USER} -m 0750 {APP_DIR}/.synckv-deployed {APP_DIR}/synckv.new && "
+        f"mv -f {APP_DIR}/synckv.new {APP_DIR}/synckv"
+    ),
+    _if=lambda: binary.changed,
     _sudo=True,
 )
 admin = files.sync(

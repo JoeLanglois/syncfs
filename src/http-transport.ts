@@ -1,3 +1,4 @@
+import { randomId } from "./crypto.js";
 import type {
   BlobManifest,
   KeyListing,
@@ -29,7 +30,7 @@ export class HttpTransport implements SyncTransport {
 
   constructor(private readonly options: HttpTransportOptions) {
     this.request = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.clientId = options.clientId ?? crypto.randomUUID();
+    this.clientId = options.clientId ?? randomId();
   }
 
   private url(resource: string, parameter: string, value: string): string {

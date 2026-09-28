@@ -1,3 +1,4 @@
+import { randomId } from "./crypto.js";
 import { blobSHA256, LocalDatabase } from "./database.js";
 import type {
   BlobInfo,
@@ -44,7 +45,7 @@ export class SyncKv {
   private readonly database: LocalDatabase;
   private readonly transport: SyncTransport | undefined;
   private readonly reportError: (error: unknown) => void;
-  private readonly instanceId = crypto.randomUUID();
+  private readonly instanceId = randomId();
   private readonly broadcast: BroadcastChannel | undefined;
   private readonly watchers = new Map<number, { prefix: string; callback: WatchCallback }>();
   private watcherId = 0;
