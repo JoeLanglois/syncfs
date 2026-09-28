@@ -5,6 +5,66 @@ import { AdminModel } from './model.js'
 
 const model = new AdminModel()
 
+function selectedValue(): m.Children {
+  if (!model.selectedKey) return m('.empty-editor', [
+    m('.empty-icon', '{}'),
+    m('h2', 'Select a key'),
+    m('p', 'Choose a key to inspect its JSON value or blob metadata.'),
+  ])
+  if (model.selectedKind === 'blob' && model.blobInfo) return [
+    m('.editor-heading', [
+      m('.key-title', [m('span.eyebrow', 'Blob'), m('h2', model.selectedKey)]),
+      m('.editor-actions', [
+        m('button.button.danger', { onclick: () => void model.remove() }, 'Delete'),
+        m('button.button.primary', { disabled: model.blobLoading, onclick: () => void model.downloadBlob() }, model.blobLoading ? 'Loading…' : 'Download'),
+      ]),
+    ]),
+    m('.blob-pane', [
+      m('.blob-metadata', [
+        metadata('Filename', model.blobInfo.filename ?? '—'),
+        metadata('Media type', model.blobInfo.contentType),
+        metadata('Size', formatBytes(model.blobInfo.size)),
+        metadata('SHA-256', model.blobInfo.sha256, true),
+        metadata('ETag', model.blobInfo.etag ?? 'Pending', true),
+      ]),
+      m('.blob-preview', blobPreview()),
+    ]),
+  ]
+  if (model.selectedKind === 'json') return [
+    m('.editor-heading', [
+      m('.key-title', [m('span.eyebrow', 'JSON value'), m('h2', model.selectedKey)]),
+      m('.editor-actions', [
+        m('button.button.danger', { onclick: () => void model.remove() }, 'Delete'),
+        m('button.button.primary', { disabled: !model.dirty || model.connection === 'connecting', onclick: () => void model.save() }, 'Save'),
+      ]),
+    ]),
+    m(JsonEditor, { value: model.editorValue, onChange: (value) => { model.editorValue = value; m.redraw() }, onSave: () => void model.save() }),
+  ]
+  return m('.empty-editor', [m('.preview-spinner'), m('p', 'Loading metadata…')])
+}
+
+function metadata(label: string, value: string, code = false): m.Children {
+  return m('dl.metadata-item', [m('dt', label), m('dd', { class: code ? 'code' : '' }, value)])
+}
+
+function blobPreview(): m.Children {
+  if (model.blobLoading) return m('.preview-placeholder', [m('.preview-spinner'), m('p', 'Loading preview…')])
+  if (model.blobError) return m('.preview-placeholder.error', [m('span', '!'), m('p', model.blobError)])
+  if (!model.blobCanPreview) return m('.preview-placeholder', [m('span.file-icon', '□'), m('p', 'No preview available for this file type.'), m('button.button', { onclick: () => void model.downloadBlob() }, 'Download file')])
+  if (!model.blobUrl) return m('.preview-placeholder', m('p', 'Preview unavailable.'))
+  if (model.blobInfo?.contentType.startsWith('image/')) return m('img.blob-image', { src: model.blobUrl, alt: model.blobInfo.filename ?? model.selectedKey })
+  return m('iframe.blob-pdf', { src: model.blobUrl, title: model.blobInfo?.filename ?? 'PDF preview' })
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++ }
+  return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${units[unit]}`
+}
+
 const App: m.Component = {
   oncreate() {
     window.addEventListener('keydown', saveShortcut)
@@ -84,32 +144,7 @@ const App: m.Component = {
                 }, [m('span.key-glyph', '{}'), m('span.key-name', key)]))),
           ]),
 
-          m('section.value-pane', model.selectedKey
-            ? [
-                m('.editor-heading', [
-                  m('.key-title', [m('span.eyebrow', 'JSON value'), m('h2', model.selectedKey)]),
-                  m('.editor-actions', [
-                    m('button.button.danger', { onclick: () => void model.remove() }, 'Delete'),
-                    m('button.button.primary', {
-                      disabled: !model.dirty || model.connection === 'connecting',
-                      onclick: () => void model.save(),
-                    }, 'Save'),
-                  ]),
-                ]),
-                m(JsonEditor, {
-                  value: model.editorValue,
-                  onChange: (value) => {
-                    model.editorValue = value
-                    m.redraw()
-                  },
-                  onSave: () => void model.save(),
-                }),
-              ]
-            : m('.empty-editor', [
-                m('.empty-icon', '{}'),
-                m('h2', 'Select a key'),
-                m('p', 'Choose a key from the list to inspect and edit its JSON value.'),
-              ])),
+          m('section.value-pane', selectedValue()),
         ]),
 
         m('footer.statusbar', [

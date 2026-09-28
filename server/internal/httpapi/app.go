@@ -4,6 +4,8 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,6 +126,12 @@ func (a *App) route(w http.ResponseWriter, r *http.Request) error {
 	if path == "/v1/events" && r.Method == "GET" {
 		return a.events(w, r)
 	}
+	if strings.HasPrefix(path, "/v1/blob-content/") && r.Method == "PUT" {
+		return a.putBlobContent(w, r, strings.TrimPrefix(path, "/v1/blob-content/"))
+	}
+	if path == "/v1/blobs" && (r.Method == "GET" || r.Method == "HEAD") {
+		return a.getBlob(w, r)
+	}
 	if path == "/v1/keys" && r.Method == "GET" {
 		return a.list(w, r)
 	}
@@ -180,6 +188,9 @@ func (a *App) readMany(w http.ResponseWriter, r *http.Request) error {
 		if e != nil {
 			return e
 		}
+		if v.Kind == "blob" {
+			return core.Fail(409, "Key contains a blob: %s", k)
+		}
 		out = append(out, map[string]any{"key": k, "value": v.JSON, "etag": v.ETag})
 	}
 	writeJSON(w, 200, out)
@@ -198,6 +209,9 @@ func (a *App) value(w http.ResponseWriter, r *http.Request) error {
 		v, e := core.Get(s, key)
 		if e != nil {
 			return e
+		}
+		if v.Kind == "blob" {
+			return core.Fail(409, "Key contains a blob: %s", key)
 		}
 		w.Header().Set("ETag", quote(v.ETag))
 		writeJSON(w, 200, map[string]any{"value": v.JSON, "etag": v.ETag})
@@ -247,10 +261,11 @@ func (a *App) value(w http.ResponseWriter, r *http.Request) error {
 }
 
 type wireOperation struct {
-	Type     string          `json:"type"`
-	Key      string          `json:"key"`
-	Value    json.RawMessage `json:"value"`
-	BaseETag string          `json:"baseEtag"`
+	Type     string             `json:"type"`
+	Key      string             `json:"key"`
+	Value    json.RawMessage    `json:"value"`
+	BaseETag string             `json:"baseEtag"`
+	Blob     *core.BlobManifest `json:"blob,omitempty"`
 }
 
 func (a *App) transaction(w http.ResponseWriter, r *http.Request) error {
@@ -273,13 +288,25 @@ func (a *App) transaction(w http.ResponseWriter, r *http.Request) error {
 			return core.Fail(400, "A transaction may operate on each key only once")
 		}
 		seen[raw.Key] = true
-		if raw.Type != "set" && raw.Type != "delete" {
+		if raw.Type != "set" && raw.Type != "setBlob" && raw.Type != "delete" {
 			return core.Fail(400, "Unknown transaction operation")
+		}
+		if raw.Type == "setBlob" {
+			if raw.Blob == nil {
+				return core.Fail(400, "Invalid blob metadata")
+			}
+			content, err := a.store.GetBlob(r.Context(), raw.Blob.SHA256)
+			if err != nil {
+				return core.Fail(400, "Blob content has not been uploaded")
+			}
+			if int64(len(content)) != raw.Blob.Size {
+				return core.Fail(400, "Blob size does not match uploaded content")
+			}
 		}
 		if raw.Type == "set" && raw.Value == nil {
 			return core.Fail(400, "Unknown transaction operation")
 		}
-		ops = append(ops, core.Operation{Type: raw.Type, Key: raw.Key, Value: raw.Value, BaseETag: raw.BaseETag, RequireAbsent: raw.BaseETag == "" && raw.Type == "set"})
+		ops = append(ops, core.Operation{Type: raw.Type, Key: raw.Key, Value: raw.Value, Blob: raw.Blob, BaseETag: raw.BaseETag, RequireAbsent: raw.BaseETag == "" && raw.Type != "delete"})
 	}
 	id := r.Header.Get("Idempotency-Key")
 	if id == "" {
@@ -350,6 +377,74 @@ func (a *App) mutations(w http.ResponseWriter, r *http.Request) error {
 		results = append(results, map[string]any{"ok": true, "result": value})
 	}
 	writeJSON(w, 200, results)
+	return nil
+}
+
+func (a *App) putBlobContent(w http.ResponseWriter, r *http.Request, expected string) error {
+	if len(expected) != 64 {
+		return core.Fail(400, "Invalid blob hash")
+	}
+	if _, err := hex.DecodeString(expected); err != nil {
+		return core.Fail(400, "Invalid blob hash")
+	}
+	limit := int64(100 << 20)
+	if raw := os.Getenv("MAX_BLOB_BYTES"); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > limit {
+		return core.Fail(413, "Blob exceeds maximum size")
+	}
+	sum := sha256.Sum256(data)
+	actual := hex.EncodeToString(sum[:])
+	if actual != strings.ToLower(expected) {
+		return core.Fail(400, "Blob hash mismatch")
+	}
+	if err = a.store.PutBlob(r.Context(), actual, data); err != nil {
+		return err
+	}
+	writeJSON(w, 200, map[string]any{"sha256": actual, "size": len(data)})
+	return nil
+}
+func (a *App) getBlob(w http.ResponseWriter, r *http.Request) error {
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		return core.Fail(400, "key is required")
+	}
+	s, err := a.snapshot(r.Context())
+	if err != nil {
+		return err
+	}
+	value, err := core.Get(s, key)
+	if err != nil {
+		return err
+	}
+	if value.Kind != "blob" || value.Blob == nil {
+		return core.Fail(409, "Key does not contain a blob: %s", key)
+	}
+	data, err := a.store.GetBlob(r.Context(), value.Blob.SHA256)
+	if err != nil {
+		return core.Fail(404, "Blob content not found")
+	}
+	sum := sha256.Sum256(data)
+	if int64(len(data)) != value.Blob.Size || hex.EncodeToString(sum[:]) != value.Blob.SHA256 {
+		return errors.New("stored blob failed integrity check")
+	}
+	w.Header().Set("Content-Type", value.Blob.ContentType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Header().Set("ETag", quote(value.ETag))
+	w.Header().Set("X-Content-SHA256", value.Blob.SHA256)
+	if value.Blob.Filename != "" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, strings.ReplaceAll(value.Blob.Filename, "\"", "")))
+	}
+	if r.Method != "HEAD" {
+		w.Write(data)
+	}
 	return nil
 }
 

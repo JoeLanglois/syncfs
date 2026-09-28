@@ -1,5 +1,11 @@
 import m from 'mithril'
-import { HttpTransport, KeyNotFoundError, SyncKv, type WatchEvent } from '@synckv/client'
+import {
+  HttpTransport,
+  SyncKv,
+  ValueTypeError,
+  type BlobInfo,
+  type WatchEvent,
+} from '@synckv/client'
 
 const FAVORITES_KEY = 'synckv-admin:favorites'
 const LAST_PREFIX_KEY = 'synckv-admin:last-prefix'
@@ -14,6 +20,11 @@ export class AdminModel {
   keys: string[] = []
   private allKeys: string[] = []
   selectedKey: string | undefined
+  selectedKind: 'json' | 'blob' | undefined
+  blobInfo: BlobInfo | undefined
+  blobUrl: string | undefined
+  blobLoading = false
+  blobError = ''
   editorValue = ''
   originalValue = ''
   connection: ConnectionState = 'connecting'
@@ -47,7 +58,12 @@ export class AdminModel {
   }
 
   get dirty(): boolean {
-    return this.selectedKey !== undefined && this.editorValue !== this.originalValue
+    return this.selectedKind === 'json' && this.selectedKey !== undefined && this.editorValue !== this.originalValue
+  }
+
+  get blobCanPreview(): boolean {
+    const type = this.blobInfo?.contentType ?? ''
+    return type.startsWith('image/') || type === 'application/pdf'
   }
 
   get currentIsFavorite(): boolean {
@@ -101,15 +117,49 @@ export class AdminModel {
 
   async selectKey(key: string, navigate = true): Promise<void> {
     if (this.dirty && !window.confirm('Discard the unsaved JSON changes?')) return
+    this.clearBlobPreview()
+    this.selectedKey = key
+    this.selectedKind = undefined
+    this.blobInfo = undefined
+    this.blobError = ''
     try {
-      const value = await this.kv.get(key)
-      this.selectedKey = key
-      this.editorValue = JSON.stringify(value, null, 2)
-      this.originalValue = this.editorValue
+      try {
+        this.blobInfo = await this.kv.getBlobInfo(key)
+        this.selectedKind = 'blob'
+        this.editorValue = ''
+        this.originalValue = ''
+        if (this.blobCanPreview) void this.loadBlobPreview(key).catch(() => undefined)
+      } catch (error) {
+        if (!(error instanceof ValueTypeError)) throw error
+        const value = await this.kv.get(key)
+        this.selectedKind = 'json'
+        this.editorValue = JSON.stringify(value, null, 2)
+        this.originalValue = this.editorValue
+      }
+      this.connection = 'ready'
       this.message = 'Ready'
       if (navigate) m.route.set('/key/:key...', { key })
     } catch (error) {
       this.message = readableError(error)
+      this.connection = 'error'
+    }
+    m.redraw()
+  }
+
+  async downloadBlob(): Promise<void> {
+    const key = this.selectedKey
+    if (!key || this.selectedKind !== 'blob') return
+    try {
+      const url = this.blobUrl ?? await this.loadBlobPreview(key)
+      if (!url || key !== this.selectedKey) return
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = this.blobInfo?.filename || key.split('/').pop() || 'download'
+      anchor.click()
+      this.message = 'Downloaded'
+    } catch (error) {
+      this.blobError = readableError(error)
+      this.message = this.blobError
       this.connection = 'error'
     }
     m.redraw()
@@ -142,6 +192,8 @@ export class AdminModel {
       await this.kv.synchronize()
       this.creating = false
       this.selectedKey = key
+      this.selectedKind = 'json'
+      this.blobInfo = undefined
       this.editorValue = JSON.stringify(value, null, 2)
       this.originalValue = this.editorValue
       this.connection = 'ready'
@@ -180,7 +232,10 @@ export class AdminModel {
     try {
       await this.kv.delete(key)
       await this.kv.synchronize()
+      this.clearBlobPreview()
       this.selectedKey = undefined
+      this.selectedKind = undefined
+      this.blobInfo = undefined
       this.editorValue = ''
       this.originalValue = ''
       this.message = 'Deleted'
@@ -208,6 +263,7 @@ export class AdminModel {
 
   async close(): Promise<void> {
     this.stopWatching?.()
+    this.clearBlobPreview()
     await this.kv.close()
   }
 
@@ -223,21 +279,41 @@ export class AdminModel {
     this.connection = 'ready'
 
     if (event.key === this.selectedKey && !this.dirty) {
-      try {
-        const value = await this.kv.get(event.key)
-        this.editorValue = JSON.stringify(value, null, 2)
-        this.originalValue = this.editorValue
-      } catch (error) {
-        if (error instanceof KeyNotFoundError) {
-          this.selectedKey = undefined
-          this.editorValue = ''
-          this.originalValue = ''
-        } else {
-          throw error
-        }
-      }
+      if (!this.allKeys.includes(event.key)) {
+        this.clearBlobPreview()
+        this.selectedKey = undefined
+        this.selectedKind = undefined
+        this.blobInfo = undefined
+        this.editorValue = ''
+        this.originalValue = ''
+      } else await this.selectKey(event.key, false)
     }
     m.redraw()
+  }
+
+  private async loadBlobPreview(key: string): Promise<string | undefined> {
+    this.blobLoading = true
+    this.blobError = ''
+    m.redraw()
+    try {
+      const blob = await this.kv.getBlob(key)
+      if (key !== this.selectedKey) return undefined
+      this.clearBlobPreview()
+      this.blobUrl = URL.createObjectURL(blob)
+      return this.blobUrl
+    } catch (error) {
+      if (key === this.selectedKey) this.blobError = readableError(error)
+      throw error
+    } finally {
+      if (key === this.selectedKey) this.blobLoading = false
+      m.redraw()
+    }
+  }
+
+  private clearBlobPreview(): void {
+    if (this.blobUrl) URL.revokeObjectURL(this.blobUrl)
+    this.blobUrl = undefined
+    this.blobLoading = false
   }
 
   private applySearch(query: string): void {

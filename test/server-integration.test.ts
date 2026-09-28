@@ -97,6 +97,32 @@ describe("SyncKv against the Go server", () => {
     expect(await right.fetch("integration/conflict/value")).toBe("left");
   });
 
+  it("stores blobs and honors metadata, on-demand, and offline strategies", async () => {
+    const writer = client("blob-writer");
+    await writer.sync("integration/blobs/");
+    await writer.setBlob("integration/blobs/receipt", new Blob(["binary receipt"], { type: "application/pdf" }), { filename: "receipt.pdf" });
+    expect((await writer.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(true);
+    await writer.synchronize();
+    expect((await writer.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(false);
+    expect(await (await writer.getBlob("integration/blobs/receipt")).text()).toBe("binary receipt");
+    expect((await writer.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(false);
+
+    const cached = client("blob-cached");
+    await cached.sync("integration/blobs/", { blobs: "on-demand" });
+    await cached.synchronize();
+    expect((await cached.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(false);
+    expect(await (await cached.getBlob("integration/blobs/receipt")).text()).toBe("binary receipt");
+    expect((await cached.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(true);
+
+    const offline = client("blob-offline");
+    await offline.sync("integration/blobs/", { blobs: "offline" });
+    await offline.synchronize();
+    expect((await offline.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(true);
+    await offline.evictBlob("integration/blobs/receipt");
+    await offline.synchronize(); // A 304 listing must not weaken the offline guarantee.
+    expect((await offline.getBlobInfo("integration/blobs/receipt")).availableLocally).toBe(true);
+  });
+
   it("emits prefix-scoped SSE invalidations", async () => {
     const abort = new AbortController();
     const response = await fetch(`${baseUrl}/v1/events?prefix=integration%2Fsse%2F&clientId=observer`, { signal: abort.signal });

@@ -1,4 +1,5 @@
 import type {
+  BlobManifest,
   KeyListing,
   PendingTransaction,
   StoreValue,
@@ -79,6 +80,20 @@ export class HttpTransport implements SyncTransport {
 
   async fetch(key: string, signal?: AbortSignal): Promise<StoreValue> {
     return (await this.get(key, signal)).value;
+  }
+
+  async putBlob(manifest: BlobManifest, value: Blob, signal?: AbortSignal): Promise<void> {
+    const response = await this.request(`${this.options.baseUrl.replace(/\/$/, "")}/v1/blob-content/${manifest.sha256}`, {
+      method: "PUT", headers: await this.headers({ "content-type": manifest.contentType }), body: value,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (!response.ok) throw new Error(`Blob upload HTTP ${response.status}`);
+  }
+
+  async getBlob(key: string, signal?: AbortSignal): Promise<Blob> {
+    const response = await this.request(this.url("blobs", "key", key), { headers: await this.headers(), ...(signal === undefined ? {} : { signal }) });
+    if (!response.ok) throw new Error(`Blob download HTTP ${response.status} for ${key}`);
+    return response.blob();
   }
 
   async transact(transaction: PendingTransaction, signal?: AbortSignal): Promise<TransactionResult> {

@@ -1,4 +1,8 @@
 export type {
+  BlobInfo,
+  BlobManifest,
+  BlobSyncStrategy,
+  BlobWriteOptions,
   KeyListing,
   KeyMetadata,
   PendingOperation,
@@ -6,6 +10,7 @@ export type {
   RemoteValue,
   StoreValue,
   SyncKvOptions,
+  SyncOptions,
   SyncTransport,
   TransactionContext,
   TransactionOperation,

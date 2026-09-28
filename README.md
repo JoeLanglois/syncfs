@@ -13,6 +13,11 @@ const kv = new SyncKv({
 
 await kv.sync("notes/");
 await kv.set("notes/today", { text: "hello" });
+
+// Blob metadata is synchronized by default without downloading payloads.
+await kv.sync("receipts/", { blobs: "on-demand" });
+await kv.setBlob("receipts/lunch.pdf", pdfBlob, { filename: "lunch.pdf" });
+const receipt = await kv.getBlob("receipts/lunch.pdf"); // downloaded and cached
 await kv.transaction((tx) => {
   tx.set("notes/a", { text: "A" });
   tx.delete("notes/old");
@@ -26,9 +31,11 @@ const archived = await kv.fetch("archive/old"); // intentionally remote-only
 
 ## API
 
-- `sync(prefix)` adds an offline prefix and schedules synchronization.
+- `sync(prefix, { blobs })` adds an offline prefix and schedules synchronization. JSON is always offline; `blobs` is `metadata` (default), `on-demand`, or `offline`.
 - `unsync(prefix)` removes values not covered by another synchronized prefix.
 - `get`, `set`, `delete`, and `keys` are local-only and require coverage.
+- `setBlob`, `getBlob`, and `getBlobInfo` store files separately from JSON values.
+- `fetchBlob` downloads without caching; `evictBlob` removes a cached payload while retaining metadata.
 - `transaction(tx => { ... })` stages a multi-key commit that is atomic locally and remotely.
 - `fetch(key)` always reads one key directly from the server.
 - `fetchKeys(prefix)` and `fetchAll(prefix)` query remote-only prefixes without caching.
@@ -39,6 +46,8 @@ const archived = await kv.fetch("archive/old"); // intentionally remote-only
 
 Values may be anything supported by IndexedDB structured clone. The default HTTP
 transport uses JSON, so provide a custom `SyncTransport` for another wire format.
+See [Blob storage and synchronization](docs/blobs.md) for payload strategies,
+integrity, limits, and transaction behavior.
 
 ## Protocol
 
@@ -48,9 +57,11 @@ transport uses JSON, so provide a custom `SyncTransport` for another wire format
 - `PUT /v1/values?key=...` sets one value.
 - `DELETE /v1/values?key=...` deletes one value.
 - `POST /v1/transactions` atomically checks and applies a local transaction.
+- `PUT /v1/blob-content/{sha256}` uploads immutable, content-addressed bytes.
+- `GET|HEAD /v1/blobs?key=...` downloads a keyed blob.
 - `GET /v1/events?prefix=...&clientId=...` provides disposable SSE invalidations.
 
-ETags are SHA-256 hashes of serialized values. Prefix listings have their own hash
+JSON ETags are SHA-256 hashes of serialized values. Blob payloads use their raw-byte SHA-256 hash while the keyed resource has a separate manifest ETag. Prefix listings have their own hash
 and support `If-None-Match`/`304`. Mutations use optimistic conditions and persistent
 idempotency keys; conflicts never silently overwrite local or remote data. A remote
 transaction is all-or-nothing, while its optimistic local state remains for explicit
@@ -60,6 +71,13 @@ conflict resolution if the server rejects it.
 
 The server is in [`server/`](server/) and supports interchangeable SQLite, local-file,
 and in-memory storage. See its README for local and Docker instructions.
+
+## Tailnet deployment
+
+[`deploy/`](deploy/) contains a pyinfra deployment compatible with the conventions in
+`~/projects/vps`. It installs a non-root systemd service bound exclusively to the
+server's Tailscale IPv4 address, adds no public Caddy route, and registers a
+consistent Restic backup hook.
 
 ## TodoMVC example
 

@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,23 @@ func TestApplyIsPureAtomicAndIdempotent(t *testing.T) {
 	replayed, replay, err := Apply(updated, Command{ID: "two", Fingerprint: "update"})
 	if err != nil || !replay.Replay || replayed.Values["a"].ETag != updated.Values["a"].ETag {
 		t.Fatal("idempotent replay failed")
+	}
+}
+
+func TestBlobManifestIsMetadataOnlyAndListed(t *testing.T) {
+	s := EmptyState()
+	manifest := &BlobManifest{SHA256: strings.Repeat("a", 64), Size: 4, ContentType: "text/plain", Filename: "a.txt"}
+	next, _, err := Apply(s, Command{ID: "blob", Fingerprint: "blob", Operations: []Operation{{Type: "setBlob", Key: "files/a", Blob: manifest, RequireAbsent: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := next.Values["files/a"]
+	if value.Kind != "blob" || value.Blob.SHA256 != manifest.SHA256 || len(value.JSON) != 0 {
+		t.Fatalf("bad blob value: %#v", value)
+	}
+	entries, _ := List(next, "files/")
+	if len(entries) != 1 || entries[0].Kind != "blob" || entries[0].Blob.Size != 4 {
+		t.Fatalf("bad listing: %#v", entries)
 	}
 }
 

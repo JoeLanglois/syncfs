@@ -21,7 +21,10 @@ SQLite uses `--db`/`DATABASE_PATH`; local files use `--files`/`FILE_STORAGE_PATH
 Memory storage has no persistence and is useful for tests. Existing databases from
 the former server use the same SQLite schema.
 
-Other environment options are `HOST`, `PORT`, `CORS_ORIGIN`, and `ADMIN_ROOT`.
+Other environment options are `HOST`, `PORT`, `CORS_ORIGIN`, `ADMIN_ROOT`, and
+`MAX_BLOB_BYTES` (default 100 MiB). Blob bytes are content-addressed: SQLite keeps
+them in `blob_content`, local-file storage places them beside the state file in a
+`.blobs` directory, and memory storage retains them only for the process lifetime.
 The built admin bundle is served below `/admin/`.
 
 ## Protocol
@@ -31,6 +34,8 @@ The built admin bundle is served below `/admin/`.
 - `GET|PUT|DELETE /v1/values?key=todo/items/123`
 - `POST /v1/values/read`
 - `POST /v1/transactions`
+- `PUT /v1/blob-content/{sha256}`
+- `GET|HEAD /v1/blobs?key=receipts/file.pdf`
 - `GET /v1/events?prefix=todo/&clientId=...`
 
 ## Build and verify
@@ -55,4 +60,5 @@ docker run --rm -p 8787:8787 -v synckv-data:/data synckv-server
 ```
 
 This server has one shared namespace and no authentication. Do not expose it to an
-untrusted network.
+untrusted network. For the tailnet-only systemd deployment, firewall requirements,
+and backup procedure, see [`../deploy/README.md`](../deploy/README.md).

@@ -11,8 +11,17 @@ import (
 	"strings"
 )
 
+type BlobManifest struct {
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
+	ContentType string `json:"contentType"`
+	Filename    string `json:"filename,omitempty"`
+}
+
 type Value struct {
-	JSON json.RawMessage `json:"value"`
+	Kind string          `json:"kind,omitempty"`
+	JSON json.RawMessage `json:"value,omitempty"`
+	Blob *BlobManifest   `json:"blob,omitempty"`
 	ETag string          `json:"etag"`
 }
 
@@ -64,6 +73,7 @@ type Operation struct {
 	Value         json.RawMessage `json:"value,omitempty"`
 	BaseETag      string          `json:"baseEtag,omitempty"`
 	RequireAbsent bool            `json:"-"`
+	Blob          *BlobManifest   `json:"blob,omitempty"`
 }
 
 type Command struct {
@@ -140,6 +150,16 @@ func Apply(input State, command Command) (State, Result, error) {
 			serialized[op.Key] = compact
 			h := Hash(compact)
 			etags[op.Key] = &h
+		} else if op.Type == "setBlob" {
+			if op.Blob == nil || len(op.Blob.SHA256) != 64 || op.Blob.Size < 0 || op.Blob.ContentType == "" || len(op.Blob.ContentType) > 255 || len(op.Blob.Filename) > 1024 || strings.ContainsAny(op.Blob.ContentType+op.Blob.Filename, "\r\n") {
+				return input, Result{}, Fail(400, "Invalid blob metadata")
+			}
+			if _, err := hex.DecodeString(op.Blob.SHA256); err != nil {
+				return input, Result{}, Fail(400, "Invalid blob metadata")
+			}
+			encoded, _ := json.Marshal(op.Blob)
+			h := Hash(encoded)
+			etags[op.Key] = &h
 		} else {
 			return input, Result{}, Fail(400, "Unknown transaction operation")
 		}
@@ -149,8 +169,11 @@ func Apply(input State, command Command) (State, Result, error) {
 	for _, op := range command.Operations {
 		if op.Type == "delete" {
 			delete(next.Values, op.Key)
+		} else if op.Type == "setBlob" {
+			manifest := *op.Blob
+			next.Values[op.Key] = Value{Kind: "blob", Blob: &manifest, ETag: *etags[op.Key]}
 		} else {
-			next.Values[op.Key] = Value{JSON: cloneBytes(serialized[op.Key]), ETag: *etags[op.Key]}
+			next.Values[op.Key] = Value{Kind: "json", JSON: cloneBytes(serialized[op.Key]), ETag: *etags[op.Key]}
 		}
 		next.Changes = append(next.Changes, Change{ID: next.NextID, Key: op.Key, Origin: command.Origin})
 		next.NextID++
@@ -182,15 +205,21 @@ func Get(s State, key string) (Value, error) {
 }
 
 type Entry struct {
-	Key  string `json:"key"`
-	ETag string `json:"etag"`
+	Key  string        `json:"key"`
+	ETag string        `json:"etag"`
+	Kind string        `json:"kind,omitempty"`
+	Blob *BlobManifest `json:"blob,omitempty"`
 }
 
 func List(s State, prefix string) ([]Entry, string) {
 	entries := []Entry{}
 	for key, value := range Normalize(s).Values {
 		if strings.HasPrefix(key, prefix) {
-			entries = append(entries, Entry{key, value.ETag})
+			kind := value.Kind
+			if kind == "" {
+				kind = "json"
+			}
+			entries = append(entries, Entry{Key: key, ETag: value.ETag, Kind: kind, Blob: value.Blob})
 		}
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Key < entries[j].Key })
@@ -224,6 +253,10 @@ func cloneState(s State) State {
 	n.NextID = s.NextID
 	for k, v := range s.Values {
 		v.JSON = cloneBytes(v.JSON)
+		if v.Blob != nil {
+			manifest := *v.Blob
+			v.Blob = &manifest
+		}
 		n.Values[k] = v
 	}
 	for k, v := range s.Responses {

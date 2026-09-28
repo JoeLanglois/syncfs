@@ -24,6 +24,8 @@ override either default.
 - Mithril history routes for shareable prefix searches and selected keys
 - Creating and deleting keys within the active prefix
 - JSON editing, syntax highlighting, auto-closing brackets, and smart indentation powered by CodeMirror 6
+- Blob metadata inspection and file downloads
+- Inline previews for images and PDF documents without adding payloads to the admin's offline cache
 - Optimistic conflict-safe saves through `@synckv/client`
 - Automatic updates through the server's SSE invalidations
 - Persistent favorite prefixes

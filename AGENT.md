@@ -37,12 +37,14 @@ for the server. Sync runs independently in the background.
 
 ## Synchronization
 
-The server stores `key`, JSON `value`, and an ETag equal to the SHA-256 hash of the
-serialized value. A prefix listing returns all matching keys and ETags. The client
-compares those with IndexedDB, bulk-downloads changed values, and removes local keys
-missing remotely.
+The server stores keyed JSON values or blob manifests. JSON ETags hash the serialized
+value; blob payloads are content-addressed separately by SHA-256. A prefix listing
+returns keys, kinds, ETags, and blob metadata. The client compares those with
+IndexedDB, downloads changed JSON values, applies the selected blob strategy, and
+removes local keys missing remotely.
 
-Writes use `If-Match`; creates use `If-None-Match: *`. Multi-key transactions commit
+Writes use `If-Match`; creates use `If-None-Match: *`. Blob synchronization defaults
+to metadata-only, with on-demand caching and eager offline strategies. Multi-key transactions commit
 atomically in IndexedDB, queue as one unit, and apply in one storage transaction.
 Persistent idempotency keys make retries safe. Conflicts must never silently
 overwrite remote changes.

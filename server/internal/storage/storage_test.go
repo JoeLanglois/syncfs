@@ -39,6 +39,17 @@ func TestAdaptersShareTheSameContract(t *testing.T) {
 			if err != nil || string(value.JSON) != "true" {
 				t.Fatalf("get: %s %v", value.JSON, err)
 			}
+			if err = store.PutBlob(context.Background(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", []byte("blob")); err != nil {
+				t.Fatal(err)
+			}
+			has, err := store.HasBlob(context.Background(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+			if err != nil || !has {
+				t.Fatalf("has blob: %v %v", has, err)
+			}
+			data, err := store.GetBlob(context.Background(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+			if err != nil || string(data) != "blob" {
+				t.Fatalf("get blob: %q %v", data, err)
+			}
 		})
 	}
 }

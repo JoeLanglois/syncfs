@@ -31,7 +31,9 @@ func NewSQLite(filename string) (*SQLite, error) {
 	_, err = db.Exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, etag TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS kv_mutations (idempotency_key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, status INTEGER NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS kv_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, origin_client_id TEXT, created_at TEXT NOT NULL);`)
+CREATE TABLE IF NOT EXISTS kv_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, origin_client_id TEXT, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS blob_metadata (key TEXT PRIMARY KEY, sha256 TEXT NOT NULL, size INTEGER NOT NULL, content_type TEXT NOT NULL, filename TEXT, etag TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS blob_content (hash TEXT PRIMARY KEY, content BLOB NOT NULL, created_at TEXT NOT NULL);`)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -53,7 +55,23 @@ func load(ctx context.Context, q interface {
 			rows.Close()
 			return s, err
 		}
-		s.Values[k] = core.Value{JSON: json.RawMessage(v), ETag: e}
+		s.Values[k] = core.Value{Kind: "json", JSON: json.RawMessage(v), ETag: e}
+	}
+	if err = rows.Close(); err != nil {
+		return s, err
+	}
+	rows, err = q.QueryContext(ctx, `SELECT key,sha256,size,content_type,COALESCE(filename,''),etag FROM blob_metadata`)
+	if err != nil {
+		return s, err
+	}
+	for rows.Next() {
+		var k, e string
+		var b core.BlobManifest
+		if err = rows.Scan(&k, &b.SHA256, &b.Size, &b.ContentType, &b.Filename, &e); err != nil {
+			rows.Close()
+			return s, err
+		}
+		s.Values[k] = core.Value{Kind: "blob", Blob: &b, ETag: e}
 	}
 	if err = rows.Close(); err != nil {
 		return s, err
@@ -119,12 +137,17 @@ func (s *SQLite) Update(ctx context.Context, transition func(core.State) (core.S
 		}
 		return result, nil
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM kv; DELETE FROM kv_mutations; DELETE FROM kv_changes;`); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM kv; DELETE FROM blob_metadata; DELETE FROM kv_mutations; DELETE FROM kv_changes;`); err != nil {
 		tx.Rollback()
 		return result, err
 	}
 	for k, v := range next.Values {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO kv(key,value,etag,updated_at) VALUES(?,?,?,datetime('now'))`, k, string(v.JSON), v.ETag); err != nil {
+		if v.Kind == "blob" && v.Blob != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO blob_metadata(key,sha256,size,content_type,filename,etag) VALUES(?,?,?,?,?,?)`, k, v.Blob.SHA256, v.Blob.Size, v.Blob.ContentType, v.Blob.Filename, v.ETag); err != nil {
+				tx.Rollback()
+				return result, err
+			}
+		} else if _, err = tx.ExecContext(ctx, `INSERT INTO kv(key,value,etag,updated_at) VALUES(?,?,?,datetime('now'))`, k, string(v.JSON), v.ETag); err != nil {
 			tx.Rollback()
 			return result, err
 		}
@@ -149,5 +172,22 @@ func (s *SQLite) Update(ctx context.Context, transition func(core.State) (core.S
 		return result, err
 	}
 	return result, nil
+}
+func (s *SQLite) HasBlob(ctx context.Context, hash string) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM blob_content WHERE hash=?`, hash).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}
+func (s *SQLite) PutBlob(ctx context.Context, hash string, data []byte) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO blob_content(hash,content,created_at) VALUES(?,?,datetime('now')) ON CONFLICT(hash) DO NOTHING`, hash, data)
+	return err
+}
+func (s *SQLite) GetBlob(ctx context.Context, hash string) ([]byte, error) {
+	var data []byte
+	err := s.db.QueryRowContext(ctx, `SELECT content FROM blob_content WHERE hash=?`, hash).Scan(&data)
+	return data, err
 }
 func (s *SQLite) Close() error { return s.db.Close() }

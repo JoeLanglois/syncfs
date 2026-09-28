@@ -64,4 +64,26 @@ func (f *Files) Update(_ context.Context, transition func(core.State) (core.Stat
 	f.state = next
 	return result, nil
 }
+func (f *Files) blobPath(hash string) string { return f.path + ".blobs/" + hash[:2] + "/" + hash }
+func (f *Files) HasBlob(_ context.Context, hash string) (bool, error) {
+	_, err := os.Stat(f.blobPath(hash))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+func (f *Files) PutBlob(_ context.Context, hash string, data []byte) error {
+	path := f.blobPath(hash)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+func (f *Files) GetBlob(_ context.Context, hash string) ([]byte, error) {
+	return os.ReadFile(f.blobPath(hash))
+}
 func (f *Files) Close() error { return nil }
